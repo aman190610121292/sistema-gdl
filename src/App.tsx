@@ -8,8 +8,8 @@ fontLink.href = "https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;
 document.head.appendChild(fontLink);
 
 // ── CONTRASEÑAS — cambiá estas dos líneas cuando quieras ─────
-const PASS_ADMIN  = "parrillas2024";   // acceso total
-const PASS_LECTOR = "lector2024";      // solo lectura
+const PASS_ADMIN  = "parrillas2026";   // acceso total
+const PASS_LECTOR = "user1";      // solo lectura
 // ────────────────────────────────────────────────────────────
 
 const C = {
