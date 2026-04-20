@@ -8,8 +8,8 @@ fontLink.href = "https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;
 document.head.appendChild(fontLink);
 
 // ── CONTRASEÑAS — cambiá estas dos líneas cuando quieras ─────
-const PASS_ADMIN  = "parrillas2026";   // acceso total
-const PASS_LECTOR = "user1";      // solo lectura
+const PASS_ADMIN  = "parrillas2024";   // acceso total
+const PASS_LECTOR = "lector2024";      // solo lectura
 // ────────────────────────────────────────────────────────────
 
 const C = {
@@ -20,22 +20,91 @@ const C = {
 const COLORS = ["#e8c547","#60a5fa","#4ade80","#f97316","#a78bfa","#f472b6"];
 const fmt = (n) => "$" + Math.round(n).toLocaleString("es-AR");
 
-// ── GUARDADO AUTOMATICO ──────────────────────────────────────
-function usePersistentState(key, initialValue) {
-  const [state, setState] = useState(() => {
-    try {
-      const saved = localStorage.getItem(key);
-      return saved ? JSON.parse(saved) : initialValue;
-    } catch { return initialValue; }
+// ── NUBE (JSONBin) ───────────────────────────────────────────
+const BIN_ID  = "69e5fa2636566621a8d110ba";
+const API_KEY = "$2a$10$JSXY/5XpnNHMvGEKC6y91eBfTdHScfFpVAcU76FDjsjG8id.2Uu12";
+const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+
+// Cache en memoria de todos los datos
+let _cache = null;
+let _saving = false;
+let _pendingSave = null;
+
+async function readBin() {
+  try {
+    const r = await fetch(`${BIN_URL}/latest`, {
+      headers: { "X-Master-Key": API_KEY }
+    });
+    const data = await r.json();
+    return data.record || {};
+  } catch { return {}; }
+}
+
+async function writeBin(record) {
+  try {
+    await fetch(BIN_URL, {
+      method: "PUT",
+      headers: { "Content-Type":"application/json", "X-Master-Key": API_KEY },
+      body: JSON.stringify(record)
+    });
+  } catch {}
+}
+
+// Escritura con debounce para no saturar la API
+function scheduleSave(record) {
+  _cache = record;
+  if (_saving) { _pendingSave = record; return; }
+  _saving = true;
+  writeBin(record).finally(() => {
+    _saving = false;
+    if (_pendingSave) {
+      const next = _pendingSave; _pendingSave = null;
+      scheduleSave(next);
+    }
   });
+}
+
+// Hook de estado persistido en la nube
+function usePersistentState(key, initialValue) {
+  const [state, setState] = useState(initialValue);
+  const [loaded, setLoaded] = useState(false);
+
+  // Cargar desde la nube al montar
+  useState(() => {
+    if (_cache) {
+      setState(_cache[key] !== undefined ? _cache[key] : initialValue);
+      setLoaded(true);
+      return;
+    }
+    readBin().then(record => {
+      _cache = record;
+      setState(record[key] !== undefined ? record[key] : initialValue);
+      setLoaded(true);
+    });
+  });
+
   const setPersistent = useCallback((updater) => {
     setState(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
-      try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
+      const newCache = { ...(_cache || {}), [key]: next };
+      scheduleSave(newCache);
+      // También guardar en localStorage como backup
+      try { localStorage.setItem("bk_"+key, JSON.stringify(next)); } catch {}
       return next;
     });
   }, [key]);
-  return [state, setPersistent];
+
+  return [state, setPersistent, loaded];
+}
+
+// Indicador global de carga
+function useCloudLoad() {
+  const [ready, setReady] = useState(!!_cache);
+  useState(() => {
+    if (_cache) return;
+    readBin().then(record => { _cache = record; setReady(true); });
+  });
+  return ready;
 }
 
 // ── DATOS INICIALES ──────────────────────────────────────────
@@ -1287,6 +1356,25 @@ const MODULOS = [
 export default function App() {
   const [role, setRole]     = useState(null);
   const [modulo, setModulo] = useState("sueldos");
+  const cloudReady          = useCloudLoad();
+
+  // Pantalla de carga mientras baja datos de la nube
+  if (!cloudReady) return (
+    <div style={{ minHeight:"100vh", background:C.bg, display:"flex",
+      alignItems:"center", justifyContent:"center", flexDirection:"column", gap:16,
+      fontFamily:"'Syne',sans-serif" }}>
+      <div style={{ fontSize:36 }}>🔥</div>
+      <div style={{ color:C.accent, fontWeight:800, fontSize:18 }}>PARRILLAS</div>
+      <div style={{ display:"flex", alignItems:"center", gap:10, color:C.textSub,
+        fontSize:12, fontFamily:"'DM Mono',monospace" }}>
+        <div style={{ width:16, height:16, border:`2px solid ${C.border}`,
+          borderTop:`2px solid ${C.accent}`, borderRadius:"50%",
+          animation:"spin 0.8s linear infinite" }}/>
+        Sincronizando datos…
+      </div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
 
   if (!role) return <LoginScreen onLogin={setRole}/>;
 
