@@ -288,7 +288,7 @@ const EMP_FIELDS = [
 ];
 
 function ModuloSueldos({isAdmin}) {
-  const [emps, setEmps] = useSaved("p-emps", EMPLEADOS_INIT);
+  const [emps, setEmps] = useSaved("parrillas-emps", EMPLEADOS_INIT);
   const [saved, setSaved] = useState(false);
   const [modal, setModal] = useState(null);
 
@@ -389,7 +389,7 @@ const STOCK_FIELDS = [
 ];
 
 function ModuloStock({isAdmin}) {
-  const [stock, setStock] = useSaved("p-stock", STOCK_INIT);
+  const [stock, setStock] = useSaved("parrillas-stock", STOCK_INIT);
   const [saved, setSaved] = useState(false);
   const [dep, setDep]     = useState(0);
   const [cat, setCat]     = useState("Todas");
@@ -511,8 +511,8 @@ function ModuloStock({isAdmin}) {
 const LOCALES_OPT = ["LITO'S","FARO","HOMERO","DON JOSÉ","GAUCHITO","AMPARITO"];
 
 function ModuloPedidos({isAdmin}) {
-  const [stock, setStock]     = useSaved("p-stock", STOCK_INIT);
-  const [pedidos, setPedidos] = useSaved("p-pedidos", []);
+  const [stock, setStock]     = useSaved("parrillas-stock", STOCK_INIT);
+  const [pedidos, setPedidos] = useSaved("parrillas-pedidos", []);
   const [saved, setSaved]     = useState(false);
   const [search, setSearch]   = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -718,7 +718,7 @@ function ModuloPedidos({isAdmin}) {
 
 // ── COSTOS ────────────────────────────────────────────────────
 function ModuloCostos({isAdmin}) {
-  const [items, setItems] = useSaved("p-costos", COSTOS_INIT);
+  const [items, setItems] = useSaved("parrillas-costos", COSTOS_INIT);
   const [saved, setSaved] = useState(false);
   const [modal, setModal] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -866,7 +866,7 @@ function ModuloCostos({isAdmin}) {
 
 // ── PROVEEDORES ───────────────────────────────────────────────
 function ModuloProveedores({isAdmin}) {
-  const [provs, setProvs] = useSaved("p-proveedores", []);
+  const [provs, setProvs] = useSaved("parrillas-proveedores", []);
   const [saved, setSaved] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [pago, setPago]   = useState({id:null,monto:""});
@@ -971,8 +971,8 @@ function ModuloProveedores({isAdmin}) {
 
 // ── VENTAS ────────────────────────────────────────────────────
 function ModuloVentas({isAdmin}) {
-  const [datos, setDatos]   = useSaved("p-ventas", VENTAS_INIT);
-  const [pedidos]           = useSaved("p-pedidos", []);
+  const [datos, setDatos]   = useSaved("parrillas-ventas", VENTAS_INIT);
+  const [pedidos]           = useSaved("parrillas-pedidos", []);
   const [saved, setSaved]   = useState(false);
   const [vista, setVista]   = useState("barras");
   const [tab, setTab]       = useState("locales");
