@@ -114,15 +114,27 @@ const STOCK_INIT = [
   sk("Marcadores",2,"Papelería",0,1),
 ];
 
-const COSTOS_INIT = [
-  {id:1,producto:"B1 (unidad)",compra:0,gastos:0,margen:0},
-  {id:2,producto:"BL1 (unidad)",compra:0,gastos:0,margen:0},
-  {id:3,producto:"Jamón Feteado ROCA",compra:0,gastos:0,margen:0},
-  {id:4,producto:"Queso Feteado ROCA",compra:0,gastos:0,margen:0},
-  {id:5,producto:"Coca CH (cajón)",compra:0,gastos:0,margen:0},
-  {id:6,producto:"Pan Paty (unidad)",compra:0,gastos:0,margen:0},
-  {id:7,producto:"Chori (unidad)",compra:0,gastos:0,margen:0},
-  {id:8,producto:"Provoletas",compra:0,gastos:0,margen:0},
+// Productos propios del stock (van a locales y/o clientes externos)
+const PRODUCTOS_INIT = [
+  {id:1, producto:"B1 (unidad)",          compra:0, gastos:0, pvLocal:0, pvMayorista:0, costo_muerto:false},
+  {id:2, producto:"BL1 (unidad)",          compra:0, gastos:0, pvLocal:0, pvMayorista:0, costo_muerto:false},
+  {id:3, producto:"Jamón Feteado ROCA",    compra:0, gastos:0, pvLocal:0, pvMayorista:0, costo_muerto:false},
+  {id:4, producto:"Queso Feteado ROCA",    compra:0, gastos:0, pvLocal:0, pvMayorista:0, costo_muerto:false},
+  {id:5, producto:"Coca CH (cajón)",       compra:0, gastos:0, pvLocal:0, pvMayorista:0, costo_muerto:false},
+  {id:6, producto:"Pan Paty (unidad)",     compra:0, gastos:0, pvLocal:0, pvMayorista:0, costo_muerto:false},
+  {id:7, producto:"Chori (unidad)",        compra:0, gastos:0, pvLocal:0, pvMayorista:0, costo_muerto:false},
+  {id:8, producto:"Provoletas",            compra:0, gastos:0, pvLocal:0, pvMayorista:0, costo_muerto:false},
+  {id:9, producto:"Mayonesa Sachet",       compra:0, gastos:0, pvLocal:0, pvMayorista:0, costo_muerto:true},
+  {id:10,producto:"Ketchup Pomo",          compra:0, gastos:0, pvLocal:0, pvMayorista:0, costo_muerto:true},
+  {id:11,producto:"Servilletas (paq.)",    compra:0, gastos:0, pvLocal:0, pvMayorista:0, costo_muerto:true},
+  {id:12,producto:"Vasos (paq.)",          compra:0, gastos:0, pvLocal:0, pvMayorista:0, costo_muerto:true},
+];
+
+// Compras externas (proveedores externos, no en stock propio)
+const COMPRAS_EXT_INIT = [
+  {id:1, producto:"Verdura",      proveedor:"",  compra:0, cantidad:"",  frecuencia:"semanal"},
+  {id:2, producto:"Garrafas",     proveedor:"",  compra:0, cantidad:"",  frecuencia:"semanal"},
+  {id:3, producto:"Pan Francés",  proveedor:"",  compra:0, cantidad:"",  frecuencia:"diaria"},
 ];
 
 const LOCALES = ["LITO'S","FARO","HOMERO","DON JOSÉ","GAUCHITO","AMPARITO"];
@@ -718,151 +730,397 @@ function ModuloPedidos({isAdmin}) {
 
 // ── COSTOS ────────────────────────────────────────────────────
 function ModuloCostos({isAdmin}) {
-  const [items, setItems] = useSaved("parrillas-costos", COSTOS_INIT);
-  const [saved, setSaved] = useState(false);
-  const [modal, setModal] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({producto:"",compra:"0",gastos:"0",margen:"0"});
+  const [productos, setProductos] = useSaved("parrillas-productos", PRODUCTOS_INIT);
+  const [externas,  setExternas]  = useSaved("parrillas-externas",  COMPRAS_EXT_INIT);
+  const [savedP, setSavedP] = useState(false);
+  const [savedE, setSavedE] = useState(false);
+  const [tab, setTab]       = useState("productos");
+  const [modal, setModal]   = useState(null);
+  const [modalE, setModalE] = useState(null);
+  const [showNuevo,  setShowNuevo]  = useState(false);
+  const [showNuevoE, setShowNuevoE] = useState(false);
+  const [newP, setNewP] = useState({producto:"",compra:"0",gastos:"0",pvLocal:"0",pvMayorista:"0",costo_muerto:false});
+  const [newE, setNewE] = useState({producto:"",proveedor:"",compra:"0",cantidad:"",frecuencia:"semanal"});
 
-  const doSave = next => { setItems(next); setSaved(true); setTimeout(()=>setSaved(false),2000); };
-  const openEdit = i => setModal({id:i.id,compra:String(i.compra),gastos:String(i.gastos),margen:String(i.margen)});
-  const saveEdit = () => {
-    doSave(items.map(i=>i.id===modal.id?{...i,compra:+modal.compra,gastos:+modal.gastos,margen:+modal.margen}:i));
+  const saveP = next => { setProductos(next); setSavedP(true); setTimeout(()=>setSavedP(false),2000); };
+  const saveE = next => { setExternas(next);  setSavedE(true); setTimeout(()=>setSavedE(false),2000); };
+
+  const costo     = p => p.compra + p.gastos;
+  const margenL   = p => costo(p)>0 ? ((p.pvLocal - costo(p))/costo(p)*100).toFixed(1) : 0;
+  const margenM   = p => costo(p)>0 ? ((p.pvMayorista - costo(p))/costo(p)*100).toFixed(1) : 0;
+
+  const costoMensual = e => {
+    const c = +e.compra * (+e.cantidad||1);
+    if(e.frecuencia==="diaria")    return c*26;
+    if(e.frecuencia==="semanal")   return c*4;
+    if(e.frecuencia==="quincenal") return c*2;
+    return c;
+  };
+
+  const productosActivos = productos.filter(p=>!p.costo_muerto);
+  const costosMuertos    = productos.filter(p=>p.costo_muerto);
+  const totalCostoExt    = externas.reduce((a,e)=>a+costoMensual(e),0);
+  const totalCostoMuerto = costosMuertos.reduce((a,p)=>a+costo(p),0);
+
+  const openEditP = p => setModal({...p,compra:String(p.compra),gastos:String(p.gastos),pvLocal:String(p.pvLocal),pvMayorista:String(p.pvMayorista),costo_muerto:p.costo_muerto});
+  const saveModalP = () => {
+    saveP(productos.map(p=>p.id===modal.id?{...p,...modal,compra:+modal.compra,gastos:+modal.gastos,pvLocal:+modal.pvLocal,pvMayorista:+modal.pvMayorista}:p));
     setModal(null);
   };
-  const agregar = () => {
-    if(!form.producto) return;
-    doSave([...items,{id:Date.now(),...form,compra:+form.compra,gastos:+form.gastos,margen:+form.margen}]);
-    setForm({producto:"",compra:"0",gastos:"0",margen:"0"}); setShowForm(false);
+  const openEditE = e => setModalE({...e,compra:String(e.compra)});
+  const saveModalE = () => {
+    saveE(externas.map(e=>e.id===modalE.id?{...e,...modalE,compra:+modalE.compra}:e));
+    setModalE(null);
   };
 
-  const costo = i=>i.compra+i.gastos;
-  const venta = i=>costo(i)*(1+i.margen/100);
-  const ganancia = i=>venta(i)-costo(i);
-  const pie = items.filter(i=>ganancia(i)>0).map(i=>({name:i.producto.split(" ")[0],value:Math.round(ganancia(i))}));
-  const avgM = items.length?(items.reduce((a,i)=>a+i.margen,0)/items.length).toFixed(1):0;
+  const dm = {fontFamily:"'DM Mono',monospace"};
+  const mon = (v,color=C.text) => <span style={{...dm,fontSize:11,color:+v>0?color:C.muted}}>{+v>0?fmt(v):"—"}</span>;
+  const pct = (v,color) => <span style={{...dm,fontSize:10,color:+v>0?color:C.muted}}>{+v>0?v+"%":"—"}</span>;
+
+  const pdfProductos = () => exportPDF("Estructura de Costos",
+    productos.map(p=>({
+      producto:p.producto, tipo:p.costo_muerto?"Costo muerto":"Activo",
+      compra:p.compra?fmt(p.compra):"—", gastos:p.gastos?fmt(p.gastos):"—",
+      costo:fmt(costo(p)), pvLocal:p.pvLocal?fmt(p.pvLocal):"—",
+      margenL:p.pvLocal?margenL(p)+"%":"—",
+      pvMay:p.pvMayorista?fmt(p.pvMayorista):"—",
+      margenM:p.pvMayorista?margenM(p)+"%":"—",
+    })),
+    [{key:"producto",label:"Producto"},{key:"tipo",label:"Tipo"},
+     {key:"compra",label:"Compra"},{key:"gastos",label:"Gastos"},{key:"costo",label:"Costo total"},
+     {key:"pvLocal",label:"PV Local"},{key:"margenL",label:"Margen L"},
+     {key:"pvMay",label:"PV Mayorista"},{key:"margenM",label:"Margen M"}]);
+
+  const pdfExternas = () => exportPDF("Compras Externas",
+    externas.map(e=>({
+      producto:e.producto, proveedor:e.proveedor||"—", compra:fmt(e.compra),
+      cantidad:e.cantidad||"—", frecuencia:e.frecuencia, costoMes:fmt(costoMensual(e))})),
+    [{key:"producto",label:"Producto"},{key:"proveedor",label:"Proveedor"},
+     {key:"compra",label:"Precio compra"},{key:"cantidad",label:"Cantidad hab."},
+     {key:"frecuencia",label:"Frecuencia"},{key:"costoMes",label:"Costo/mes est."}]);
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
+
       {modal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center"}}
           onClick={e=>e.target===e.currentTarget&&setModal(null)}>
-          <div style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:12,padding:"28px",width:400,
-            display:"flex",flexDirection:"column",gap:16,boxShadow:"0 20px 60px rgba(0,0,0,.6)"}}>
+          <div style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:12,
+            padding:"28px",width:520,maxWidth:"95vw",display:"flex",flexDirection:"column",gap:18,
+            boxShadow:"0 20px 60px rgba(0,0,0,.7)"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:16}}>Editar costos</span>
-              <button onClick={()=>setModal(null)} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>×</button>
+              <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:16}}>{modal.producto}</span>
+              <button onClick={()=>setModal(null)} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>x</button>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
-              {[["P. Compra","compra"],["Gastos","gastos"],["Margen %","margen"]].map(([l,k])=>(
+            <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+              <input type="checkbox" checked={!!modal.costo_muerto}
+                onChange={e=>setModal(m=>({...m,costo_muerto:e.target.checked}))}
+                style={{width:16,height:16,accentColor:C.orange}}/>
+              <span style={{color:C.textSub,fontSize:12}}>Es <strong style={{color:C.orange}}>costo muerto</strong> (consumo interno, no genera margen directo)</span>
+            </label>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+              {[["P. Compra ($)","compra"],["Gastos adicionales ($)","gastos"]].map(([l,k])=>(
                 <div key={k}>
                   <div style={{color:C.textSub,fontSize:10,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>{l}</div>
-                  <input type="number" style={{...inp,width:"100%"}} value={modal[k]}
-                    onChange={e=>setModal(m=>({...m,[k]:e.target.value}))}/>
+                  <input type="number" style={{...inp,width:"100%"}} value={modal[k]} onChange={e=>setModal(m=>({...m,[k]:e.target.value}))}/>
                 </div>
               ))}
             </div>
-            <div style={{color:C.textSub,fontSize:11,fontFamily:"'DM Mono',monospace"}}>
-              Costo total: {fmt((+modal.compra)+(+modal.gastos))} · P. Venta: {fmt(((+modal.compra)+(+modal.gastos))*(1+(+modal.margen)/100))}
-            </div>
+            {!modal.costo_muerto&&(
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                {[["Precio venta a locales ($)","pvLocal"],["Precio venta mayorista ($)","pvMayorista"]].map(([l,k])=>(
+                  <div key={k}>
+                    <div style={{color:C.textSub,fontSize:10,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>{l}</div>
+                    <input type="number" style={{...inp,width:"100%"}} value={modal[k]} onChange={e=>setModal(m=>({...m,[k]:e.target.value}))}/>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!modal.costo_muerto&&(+modal.compra>0)&&(
+              <div style={{background:C.bg,borderRadius:7,padding:"12px 14px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div>
+                  <div style={{color:C.textSub,fontSize:10,fontFamily:"'DM Mono',monospace",marginBottom:3}}>MARGEN LOCAL</div>
+                  <div style={{color:C.green,fontFamily:"'DM Mono',monospace",fontWeight:700,fontSize:14}}>
+                    {+modal.pvLocal>0?(((+modal.pvLocal-(+modal.compra+ +modal.gastos))/(+modal.compra+ +modal.gastos))*100).toFixed(1)+"%":"—"}
+                  </div>
+                </div>
+                <div>
+                  <div style={{color:C.textSub,fontSize:10,fontFamily:"'DM Mono',monospace",marginBottom:3}}>MARGEN MAYORISTA</div>
+                  <div style={{color:C.accent,fontFamily:"'DM Mono',monospace",fontWeight:700,fontSize:14}}>
+                    {+modal.pvMayorista>0?(((+modal.pvMayorista-(+modal.compra+ +modal.gastos))/(+modal.compra+ +modal.gastos))*100).toFixed(1)+"%":"—"}
+                  </div>
+                </div>
+              </div>
+            )}
             <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
               <button onClick={()=>setModal(null)} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:7,padding:"9px 20px",color:C.textSub,cursor:"pointer",fontFamily:"'Syne',sans-serif",fontWeight:600,fontSize:13}}>Cancelar</button>
-              <button onClick={saveEdit} style={{background:C.accent,border:"none",borderRadius:7,padding:"9px 20px",color:C.bg,cursor:"pointer",fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:13}}>✓ Guardar</button>
+              <button onClick={saveModalP} style={{background:C.accent,border:"none",borderRadius:7,padding:"9px 20px",color:C.bg,cursor:"pointer",fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:13}}>Guardar</button>
             </div>
           </div>
         </div>
       )}
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
-        <KPI label="Productos" value={items.length.toString()} sub="Con estructura de costos"/>
-        <KPI label="Ganancia proyectada" value={fmt(items.reduce((a,i)=>a+ganancia(i),0))} sub="Según precios definidos" color={C.green}/>
-        <KPI label="Margen promedio" value={avgM+"%"} sub="Sobre precio de costo" color={C.blue}/>
-      </div>
-
-      <div style={{display:"grid",gridTemplateColumns:"1fr 300px",gap:16}}>
-        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14}}>Estructura de Costos</span>
-              <Saved show={saved}/>
+      {modalE&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center"}}
+          onClick={e=>e.target===e.currentTarget&&setModalE(null)}>
+          <div style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:12,
+            padding:"28px",width:460,maxWidth:"95vw",display:"flex",flexDirection:"column",gap:16,
+            boxShadow:"0 20px 60px rgba(0,0,0,.7)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:16}}>Editar compra externa</span>
+              <button onClick={()=>setModalE(null)} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>x</button>
             </div>
-            <div style={{display:"flex",gap:8}}>
-              <PDFBtn onClick={()=>exportPDF("Costos",items.map(i=>({producto:i.producto,
-                compra:i.compra?fmt(i.compra):"—",gastos:i.gastos?fmt(i.gastos):"—",
-                costo:fmt(costo(i)),margen:i.margen+"%",venta:venta(i)?fmt(venta(i)):"—",ganancia:ganancia(i)?fmt(ganancia(i)):"—"})),
-                [{key:"producto",label:"Producto"},{key:"compra",label:"Compra"},{key:"gastos",label:"Gastos"},
-                 {key:"costo",label:"Costo"},{key:"margen",label:"Margen"},{key:"venta",label:"P. Venta"},{key:"ganancia",label:"Ganancia"}])}/>
-              {isAdmin&&<button onClick={()=>setShowForm(!showForm)} style={{background:C.accent,color:C.bg,border:"none",borderRadius:6,
-                padding:"5px 12px",fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:11,cursor:"pointer"}}>
-                {showForm?"Cancelar":"+ Producto"}
-              </button>}
-            </div>
-          </div>
-          {isAdmin&&showForm&&(
-            <div style={{padding:"11px 16px",borderBottom:`1px solid ${C.border}`,display:"grid",
-              gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:7,alignItems:"end",background:C.bg}}>
-              {[["Producto","producto","text"],["P. Compra","compra","number"],["Gastos","gastos","number"],["Margen %","margen","number"]].map(([l,k,t])=>(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+              {[["Producto","producto","text"],["Proveedor","proveedor","text"],["Precio compra ($)","compra","number"],["Cantidad habitual","cantidad","text"]].map(([l,k,t])=>(
                 <div key={k}>
-                  <div style={{color:C.textSub,fontSize:9,marginBottom:3}}>{l}</div>
-                  <input type={t} style={{...inp,width:"100%"}} value={form[k]} onChange={e=>setForm(f=>({...f,[k]:e.target.value}))}/>
+                  <div style={{color:C.textSub,fontSize:10,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>{l}</div>
+                  <input type={t} style={{...inp,width:"100%"}} value={modalE[k]||""} onChange={e=>setModalE(m=>({...m,[k]:e.target.value}))}/>
                 </div>
               ))}
-              <SmBtn onClick={agregar}>OK</SmBtn>
+              <div style={{gridColumn:"1/-1"}}>
+                <div style={{color:C.textSub,fontSize:10,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Frecuencia de compra</div>
+                <select style={{...inp,width:"100%"}} value={modalE.frecuencia} onChange={e=>setModalE(m=>({...m,frecuencia:e.target.value}))}>
+                  {["diaria","semanal","quincenal","mensual"].map(f=><option key={f}>{f}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{background:C.bg,borderRadius:7,padding:"10px 14px",fontFamily:"'DM Mono',monospace",fontSize:11,color:C.textSub}}>
+              Costo mensual estimado: <strong style={{color:C.orange,fontSize:13}}>{fmt(costoMensual({...modalE,compra:+modalE.compra}))}</strong>
+            </div>
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+              <button onClick={()=>setModalE(null)} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:7,padding:"9px 20px",color:C.textSub,cursor:"pointer",fontFamily:"'Syne',sans-serif",fontWeight:600,fontSize:13}}>Cancelar</button>
+              <button onClick={saveModalE} style={{background:C.accent,border:"none",borderRadius:7,padding:"9px 20px",color:C.bg,cursor:"pointer",fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:13}}>Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{display:"flex",gap:8}}>
+        <TabBtn active={tab==="productos"} onClick={()=>setTab("productos")}>Productos propios</TabBtn>
+        <TabBtn active={tab==="externas"} onClick={()=>setTab("externas")} color={C.purple}>Compras externas</TabBtn>
+        <TabBtn active={tab==="resumen"} onClick={()=>setTab("resumen")} color={C.blue}>Resumen</TabBtn>
+      </div>
+
+      {tab==="productos"&&(
+        <>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
+            <KPI label="Productos activos" value={productosActivos.length.toString()} sub="Con precios de venta"/>
+            <KPI label="Costos muertos" value={costosMuertos.length.toString()} sub="Aderezos, papeleria, etc." color={C.orange}/>
+            <KPI label="Mayor margen local" value={productosActivos.filter(p=>p.pvLocal>0).length>0?Math.max(...productosActivos.filter(p=>p.pvLocal>0).map(p=>+margenL(p))).toFixed(1)+"%":"—"} sub="Sobre costo" color={C.green}/>
+            <KPI label="Mayor margen mayorista" value={productosActivos.filter(p=>p.pvMayorista>0).length>0?Math.max(...productosActivos.filter(p=>p.pvMayorista>0).map(p=>+margenM(p))).toFixed(1)+"%":"—"} sub="Sobre costo" color={C.accent}/>
+          </div>
+          <div style={{background:C.accent+"10",border:`1px solid ${C.accent}30`,borderRadius:8,padding:"10px 14px",display:"flex",gap:10,alignItems:"center"}}>
+            <span>💡</span>
+            <span style={{color:C.textSub,fontSize:11}}>
+              Cada producto puede tener precio diferente para locales y para clientes mayoristas.
+              Marca <strong style={{color:C.orange}}>Costo muerto</strong> a aderezos y papeleria (consumo interno sin margen directo).
+            </span>
+          </div>
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14}}>Productos del Stock Propio</span>
+                <Saved show={savedP}/>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <PDFBtn onClick={pdfProductos}/>
+                {isAdmin&&<button onClick={()=>setShowNuevo(!showNuevo)} style={{background:C.accent,color:C.bg,border:"none",borderRadius:6,padding:"5px 12px",fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:11,cursor:"pointer"}}>{showNuevo?"Cancelar":"+ Producto"}</button>}
+              </div>
+            </div>
+            {isAdmin&&showNuevo&&(
+              <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.border}`,display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr auto",gap:8,alignItems:"end",background:C.bg}}>
+                {[["Nombre del producto","producto","text"],["P. Compra","compra","number"],["Gastos","gastos","number"],["PV Local","pvLocal","number"],["PV Mayorista","pvMayorista","number"]].map(([l,k,t])=>(
+                  <div key={k}>
+                    <div style={{color:C.textSub,fontSize:9,marginBottom:3}}>{l}</div>
+                    <input type={t} style={{...inp,width:"100%"}} value={newP[k]} onChange={e=>setNewP(v=>({...v,[k]:e.target.value}))}/>
+                  </div>
+                ))}
+                <SmBtn onClick={()=>{
+                  if(!newP.producto)return;
+                  saveP([...productos,{id:Date.now(),...newP,compra:+newP.compra,gastos:+newP.gastos,pvLocal:+newP.pvLocal,pvMayorista:+newP.pvMayorista,costo_muerto:false}]);
+                  setNewP({producto:"",compra:"0",gastos:"0",pvLocal:"0",pvMayorista:"0",costo_muerto:false});
+                  setShowNuevo(false);
+                }}>OK</SmBtn>
+              </div>
+            )}
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",minWidth:780}}>
+                <thead><tr>
+                  <Th>Producto</Th><Th>Tipo</Th><Th>P. Compra</Th><Th>Gastos</Th><Th>Costo total</Th>
+                  <Th>PV Local</Th><Th>Margen L</Th><Th>PV Mayorista</Th><Th>Margen M</Th>
+                  {isAdmin&&<Th></Th>}
+                </tr></thead>
+                <tbody>
+                  {productos.map(p=>(
+                    <tr key={p.id} {...rh}>
+                      <Td><strong style={{fontSize:11}}>{p.producto}</strong></Td>
+                      <Td>{p.costo_muerto?<Badge color={C.orange}>Costo muerto</Badge>:<Badge color={C.green}>Activo</Badge>}</Td>
+                      <Td>{mon(p.compra)}</Td>
+                      <Td>{mon(p.gastos)}</Td>
+                      <Td style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600}}>{costo(p)>0?fmt(costo(p)):"—"}</Td>
+                      <Td>{p.costo_muerto?<span style={{color:C.muted,fontSize:11}}>N/A</span>:mon(p.pvLocal,C.blue)}</Td>
+                      <Td>{p.costo_muerto?<span style={{color:C.muted,fontSize:11}}>N/A</span>:pct(margenL(p),C.green)}</Td>
+                      <Td>{p.costo_muerto?<span style={{color:C.muted,fontSize:11}}>N/A</span>:mon(p.pvMayorista,C.accent)}</Td>
+                      <Td>{p.costo_muerto?<span style={{color:C.muted,fontSize:11}}>N/A</span>:pct(margenM(p),C.accent)}</Td>
+                      {isAdmin&&<Td>
+                        <span style={{display:"flex",gap:4}}>
+                          <GhBtn onClick={()=>openEditP(p)}>Editar</GhBtn>
+                          <button onClick={()=>saveP(productos.filter(x=>x.id!==p.id))} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:12,opacity:.5}}>x</button>
+                        </span>
+                      </Td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {tab==="externas"&&(
+        <>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
+            <KPI label="Productos externos" value={externas.length.toString()} sub="De otros proveedores"/>
+            <KPI label="Costo mensual estimado" value={fmt(totalCostoExt)} sub="Suma todas las frecuencias" color={C.purple}/>
+            <KPI label="Costo anual estimado" value={fmt(totalCostoExt*12)} sub="Proyeccion 12 meses" color={C.orange}/>
+          </div>
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14}}>Compras a Proveedores Externos</span>
+                <Saved show={savedE}/>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <PDFBtn onClick={pdfExternas}/>
+                {isAdmin&&<button onClick={()=>setShowNuevoE(!showNuevoE)} style={{background:C.accent,color:C.bg,border:"none",borderRadius:6,padding:"5px 12px",fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:11,cursor:"pointer"}}>{showNuevoE?"Cancelar":"+ Compra"}</button>}
+              </div>
+            </div>
+            {isAdmin&&showNuevoE&&(
+              <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.border}`,display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr auto",gap:8,alignItems:"end",background:C.bg}}>
+                {[["Producto","producto","text"],["Proveedor","proveedor","text"],["Precio compra ($)","compra","number"],["Cantidad habitual","cantidad","text"]].map(([l,k,t])=>(
+                  <div key={k}>
+                    <div style={{color:C.textSub,fontSize:9,marginBottom:3}}>{l}</div>
+                    <input type={t} style={{...inp,width:"100%"}} value={newE[k]} onChange={e=>setNewE(v=>({...v,[k]:e.target.value}))}/>
+                  </div>
+                ))}
+                <div>
+                  <div style={{color:C.textSub,fontSize:9,marginBottom:3}}>Frecuencia</div>
+                  <select style={{...inp,width:"100%"}} value={newE.frecuencia} onChange={e=>setNewE(v=>({...v,frecuencia:e.target.value}))}>
+                    {["diaria","semanal","quincenal","mensual"].map(f=><option key={f}>{f}</option>)}
+                  </select>
+                </div>
+                <SmBtn onClick={()=>{
+                  if(!newE.producto)return;
+                  saveE([...externas,{id:Date.now(),...newE,compra:+newE.compra}]);
+                  setNewE({producto:"",proveedor:"",compra:"0",cantidad:"",frecuencia:"semanal"});
+                  setShowNuevoE(false);
+                }}>OK</SmBtn>
+              </div>
+            )}
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead><tr>
+                <Th>Producto</Th><Th>Proveedor</Th><Th>Precio compra</Th>
+                <Th>Cantidad hab.</Th><Th>Frecuencia</Th><Th>Costo/mes est.</Th>
+                {isAdmin&&<Th></Th>}
+              </tr></thead>
+              <tbody>
+                {externas.length===0&&<tr><Td colSpan={7} style={{color:C.muted,textAlign:"center",padding:20}}>Sin compras externas. Agrega verdura, garrafas, pan frances y otros.</Td></tr>}
+                {externas.map(e=>(
+                  <tr key={e.id} {...rh}>
+                    <Td><strong>{e.producto}</strong></Td>
+                    <Td style={{color:C.textSub,fontSize:11}}>{e.proveedor||"—"}</Td>
+                    <Td>{mon(e.compra)}</Td>
+                    <Td style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:C.textSub}}>{e.cantidad||"—"}</Td>
+                    <Td><Badge color={C.purple}>{e.frecuencia}</Badge></Td>
+                    <Td style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:C.orange,fontWeight:700}}>{fmt(costoMensual(e))}</Td>
+                    {isAdmin&&<Td>
+                      <span style={{display:"flex",gap:4}}>
+                        <GhBtn onClick={()=>openEditE(e)}>Editar</GhBtn>
+                        <button onClick={()=>saveE(externas.filter(x=>x.id!==e.id))} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:12,opacity:.5}}>x</button>
+                      </span>
+                    </Td>}
+                  </tr>
+                ))}
+                {externas.length>0&&(
+                  <tr style={{background:C.bg}}>
+                    <Td colSpan={5} style={{fontWeight:700,color:C.textSub,fontSize:11}}>TOTAL MENSUAL ESTIMADO</Td>
+                    <Td style={{fontFamily:"'DM Mono',monospace",fontSize:14,color:C.orange,fontWeight:800}}>{fmt(totalCostoExt)}</Td>
+                    {isAdmin&&<Td/>}
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {tab==="resumen"&&(
+        <>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
+            <KPI label="Costo compras externas/mes" value={fmt(totalCostoExt)} sub="Verdura, garrafas, pan, etc." color={C.purple}/>
+            <KPI label="Costo muerto stock" value={fmt(totalCostoMuerto)} sub="Aderezos, papeleria (referencial)" color={C.orange}/>
+            <KPI label="Productos con margen cargado" value={productosActivos.filter(p=>p.pvLocal>0||p.pvMayorista>0).length.toString()} sub={"de "+productosActivos.length+" activos"} color={C.green}/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
+              <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
+                <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13}}>Margenes por Producto - Local</span>
+              </div>
+              {productosActivos.filter(p=>p.pvLocal>0).length===0
+                ? <div style={{padding:"30px",textAlign:"center",color:C.muted,fontFamily:"'DM Mono',monospace",fontSize:11}}>Carga precios de venta local en la pestana Productos</div>
+                : <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={productosActivos.filter(p=>p.pvLocal>0).map(p=>({name:p.producto.split(" ")[0],margen:+margenL(p)}))} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke={C.border}/>
+                      <XAxis type="number" tick={{fill:C.textSub,fontSize:9}} axisLine={false} tickLine={false} unit="%"/>
+                      <YAxis type="category" dataKey="name" width={80} tick={{fill:C.text,fontSize:10}} axisLine={false} tickLine={false}/>
+                      <Tooltip formatter={v=>[v+"%","Margen local"]} contentStyle={{background:C.card,border:`1px solid ${C.border}`,borderRadius:6}}/>
+                      <Bar dataKey="margen" fill={C.blue} radius={[0,4,4,0]}/>
+                    </BarChart>
+                  </ResponsiveContainer>}
+            </div>
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
+              <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
+                <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13}}>Margenes por Producto - Mayorista</span>
+              </div>
+              {productosActivos.filter(p=>p.pvMayorista>0).length===0
+                ? <div style={{padding:"30px",textAlign:"center",color:C.muted,fontFamily:"'DM Mono',monospace",fontSize:11}}>Carga precios mayoristas en la pestana Productos</div>
+                : <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={productosActivos.filter(p=>p.pvMayorista>0).map(p=>({name:p.producto.split(" ")[0],margen:+margenM(p)}))} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke={C.border}/>
+                      <XAxis type="number" tick={{fill:C.textSub,fontSize:9}} axisLine={false} tickLine={false} unit="%"/>
+                      <YAxis type="category" dataKey="name" width={80} tick={{fill:C.text,fontSize:10}} axisLine={false} tickLine={false}/>
+                      <Tooltip formatter={v=>[v+"%","Margen mayorista"]} contentStyle={{background:C.card,border:`1px solid ${C.border}`,borderRadius:6}}/>
+                      <Bar dataKey="margen" fill={C.accent} radius={[0,4,4,0]}/>
+                    </BarChart>
+                  </ResponsiveContainer>}
+            </div>
+          </div>
+          {costosMuertos.length>0&&(
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
+              <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
+                <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13}}>Costos Muertos (consumo interno)</span>
+              </div>
+              <table style={{width:"100%",borderCollapse:"collapse"}}>
+                <thead><tr><Th>Producto</Th><Th>P. Compra</Th><Th>Gastos</Th><Th>Costo unitario</Th></tr></thead>
+                <tbody>
+                  {costosMuertos.map(p=>(
+                    <tr key={p.id} {...rh}>
+                      <Td><strong>{p.producto}</strong></Td>
+                      <Td>{mon(p.compra)}</Td>
+                      <Td>{mon(p.gastos)}</Td>
+                      <Td style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:C.orange,fontWeight:600}}>{costo(p)>0?fmt(costo(p)):"Sin costo cargado"}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
-          <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr>
-              <Th>Producto</Th><Th>P. Compra</Th><Th>Gastos</Th><Th>Costo</Th><Th>Margen</Th><Th>P. Venta</Th><Th>Ganancia</Th>
-              {isAdmin&&<Th></Th>}
-            </tr></thead>
-            <tbody>
-              {items.map(i=>(
-                <tr key={i.id} {...rh}>
-                  <Td><strong style={{fontSize:11}}>{i.producto}</strong></Td>
-                  {[i.compra,i.gastos].map((v,x)=><Td key={x} style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:v===0?C.muted:C.text}}>{v===0?"—":fmt(v)}</Td>)}
-                  <Td style={{fontFamily:"'DM Mono',monospace",fontSize:11}}>{costo(i)===0?"—":fmt(costo(i))}</Td>
-                  <Td>
-                    <div style={{display:"flex",alignItems:"center",gap:5}}>
-                      <div style={{width:36,height:3,background:C.border,borderRadius:2}}>
-                        <div style={{width:`${Math.min(100,i.margen*2.5)}%`,height:"100%",background:C.green,borderRadius:2}}/>
-                      </div>
-                      <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:C.green}}>{i.margen}%</span>
-                    </div>
-                  </Td>
-                  <Td style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:C.accent,fontWeight:600}}>{venta(i)===0?"—":fmt(venta(i))}</Td>
-                  <Td style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:C.green}}>{ganancia(i)===0?"—":fmt(ganancia(i))}</Td>
-                  {isAdmin&&<Td>
-                    <span style={{display:"flex",gap:4}}>
-                      <GhBtn onClick={()=>openEdit(i)}>✎ Editar</GhBtn>
-                      <button onClick={()=>doSave(items.filter(x=>x.id!==i.id))}
-                        style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:12,opacity:.5}}>×</button>
-                    </span>
-                  </Td>}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:16}}>
-          <div style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13,marginBottom:12}}>Distribución de Ganancia</div>
-          {pie.length>0
-            ? <ResponsiveContainer width="100%" height={230}>
-                <PieChart>
-                  <Pie data={pie} cx="50%" cy="50%" outerRadius={85} dataKey="value"
-                    label={({name,percent})=>`${name} ${(percent*100).toFixed(0)}%`} labelLine={false} fontSize={9}>
-                    {pie.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
-                  </Pie>
-                  <Tooltip formatter={v=>[fmt(v),"Ganancia"]} contentStyle={{background:C.card,border:`1px solid ${C.border}`,borderRadius:6}}/>
-                </PieChart>
-              </ResponsiveContainer>
-            : <div style={{color:C.muted,textAlign:"center",padding:"40px 0",fontSize:11,fontFamily:"'DM Mono',monospace"}}>
-                Cargá costos para ver el gráfico
-              </div>}
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }
+
 
 // ── PROVEEDORES ───────────────────────────────────────────────
 function ModuloProveedores({isAdmin}) {
