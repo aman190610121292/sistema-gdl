@@ -7,15 +7,15 @@ import {
 // ── FUENTES ───────────────────────────────────────────────────
 const fl = document.createElement("link");
 fl.rel = "stylesheet";
-fl.href = "https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap";
+fl.href = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Syne:wght@700;800&family=DM+Mono:wght@400;500&display=swap";
 document.head.appendChild(fl);
 
 // ── COLORES ───────────────────────────────────────────────────
 const C = {
-  bg:"#0a0c10", panel:"#11141c", card:"#171b26", border:"#1e2436",
-  accent:"#f0c040", green:"#3dd68c", red:"#f26c6c", blue:"#5ba3f5",
-  orange:"#f5813a", purple:"#9d7de8", muted:"#4a5568", text:"#e8ecf4", textSub:"#7c88a0",
-  accentDim:"#b89020"
+  bg:"#f4f6f9", panel:"#ffffff", card:"#ffffff", border:"#e2e8f0",
+  accent:"#d97706", green:"#16a34a", red:"#dc2626", blue:"#2563eb",
+  orange:"#ea580c", purple:"#7c3aed", muted:"#94a3b8", text:"#1e293b", textSub:"#64748b",
+  accentDim:"#b45309", shadow:"0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04)"
 };
 const COLORS = ["#e8c547","#60a5fa","#4ade80","#f97316","#a78bfa","#f472b6"];
 const fmt = (n) => "$" + Math.round(n).toLocaleString("es-AR");
@@ -173,8 +173,8 @@ function exportPDF(titulo, rows, cols) {
 }
 
 // ── UI ────────────────────────────────────────────────────────
-const inp = {background:C.bg,border:`1px solid ${C.border}`,borderRadius:7,
-  padding:"8px 11px",color:C.text,fontSize:12,fontFamily:"'DM Mono',monospace",outline:"none",
+const inp = {background:"#ffffff",border:`1px solid ${C.border}`,borderRadius:7,
+  padding:"8px 11px",color:C.text,fontSize:12,fontFamily:"'Inter',sans-serif",outline:"none",
   transition:"border-color .15s"};
 
 const Badge = ({children,color=C.accent}) => (
@@ -188,7 +188,7 @@ const Badge = ({children,color=C.accent}) => (
 const KPI = ({label,value,sub,color=C.accent}) => (
   <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,
     padding:"16px 20px",borderLeft:`3px solid ${color}`,
-    boxShadow:"0 2px 8px rgba(0,0,0,.2)"}}>
+    boxShadow:C.shadow}}>
     <div style={{color:C.textSub,fontSize:9,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1.5,marginBottom:6}}>{label}</div>
     <div style={{color,fontSize:22,fontFamily:"'Syne',sans-serif",fontWeight:800,lineHeight:1.1,letterSpacing:-.5}}>{value}</div>
     {sub && <div style={{color:C.muted,fontSize:10,marginTop:4,fontFamily:"'DM Mono',monospace"}}>{sub}</div>}
@@ -196,10 +196,10 @@ const KPI = ({label,value,sub,color=C.accent}) => (
 );
 
 const Th = ({children,style={}}) => (
-  <th style={{padding:"9px 14px",textAlign:"left",color:C.textSub,fontSize:9,
-    fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1.5,
+  <th style={{padding:"9px 14px",textAlign:"left",color:C.textSub,fontSize:10,
+    fontFamily:"'Inter',sans-serif",textTransform:"uppercase",letterSpacing:1,
     borderBottom:`1px solid ${C.border}`,fontWeight:600,whiteSpace:"nowrap",
-    background:C.panel,...style}}>{children}</th>
+    background:"#f8fafc",...style}}>{children}</th>
 );
 const Td = ({children,style={},colSpan}) => (
   <td colSpan={colSpan} style={{padding:"7px 12px",color:C.text,fontSize:12,
@@ -207,22 +207,27 @@ const Td = ({children,style={},colSpan}) => (
 );
 
 const rh = {
-  onMouseEnter: e => { e.currentTarget.style.background = C.bg+"cc"; },
+  onMouseEnter: e => { e.currentTarget.style.background = "#f8fafc"; },
   onMouseLeave: e => { e.currentTarget.style.background = "transparent"; }
 };
 
 const TabBtn = ({active,onClick,children,color=C.accent}) => (
-  <button onClick={onClick} style={{background:active?color+"22":C.card,
+  <button onClick={onClick} style={{
+    background:active?color+"15":"transparent",
     color:active?color:C.textSub,
-    border:`1px solid ${active?color:C.border}`,borderRadius:7,
-    padding:"6px 14px",fontFamily:"'Syne',sans-serif",fontWeight:active?700:500,
-    fontSize:11,cursor:"pointer",transition:"all .15s"}}>{children}</button>
+    border:`1px solid ${active?color+"60":C.border}`,borderRadius:7,
+    padding:"6px 16px",fontFamily:"'Inter',sans-serif",fontWeight:active?600:400,
+    fontSize:12,cursor:"pointer",transition:"all .15s"}}
+    onMouseEnter={e=>{ if(!active) e.currentTarget.style.background="#f1f5f9"; }}
+    onMouseLeave={e=>{ if(!active) e.currentTarget.style.background="transparent"; }}>
+    {children}
+  </button>
 );
 
 const SmBtn = ({onClick,children,color=C.green}) => (
   <button onClick={onClick} style={{background:color,border:"none",borderRadius:6,
-    padding:"5px 12px",color:"#000",cursor:"pointer",fontSize:11,
-    fontFamily:"'Syne',sans-serif",fontWeight:700}}>{children}</button>
+    padding:"6px 14px",color:"#fff",cursor:"pointer",fontSize:11,
+    fontFamily:"'Inter',sans-serif",fontWeight:600,whiteSpace:"nowrap"}}>{children}</button>
 );
 
 const GhBtn = ({onClick,children}) => (
@@ -582,6 +587,217 @@ function ModuloPedidos({isAdmin}) {
   // Stats
   const hoy        = new Date().toISOString().slice(0,10);
   const pedidosHoy = pedidos.filter(p=>p.fecha===hoy).length;
+
+  // ── Hoja de despacho diaria ──────────────────────────────────
+  const hojaDespacho = () => {
+    const pedidosDelDia = pedidos.filter(p=>p.fecha===hoy);
+    if(pedidosDelDia.length===0) { alert("No hay pedidos cargados para hoy."); return; }
+    
+    // Agrupar por producto → totales
+    const totales = {};
+    pedidosDelDia.forEach(p=>{
+      p.items.forEach(it=>{
+        const key = it.producto;
+        if(!totales[key]) totales[key]={producto:it.producto,unidad:it.unidad,total:0,detalle:[]};
+        totales[key].total += it.cantidad;
+        totales[key].detalle.push({destino:p.nombreMostrar||p.destino,cant:it.cantidad,tipo:p.tipo});
+      });
+    });
+
+    const fecha = new Date().toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+    const rows = Object.values(totales).sort((a,b)=>a.producto.localeCompare(b.producto));
+    
+    const detalleHtml = rows.map(r=>`
+      <tr>
+        <td style="font-weight:600;font-size:13px">${r.producto}</td>
+        <td style="font-size:11px;color:#666">${r.unidad}</td>
+        <td style="font-size:18px;font-weight:800;color:#d97706;text-align:center">${r.total}</td>
+        <td style="font-size:11px;color:#555">${r.detalle.map(d=>`${d.destino} (${d.cant})`).join(" · ")}</td>
+      </tr>`).join("");
+
+    const html = `<html><head><title>Hoja de Despacho ${hoy}</title><style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:'Inter',Arial,sans-serif;padding:32px;color:#1e293b;background:#fff}
+      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:20px;border-bottom:3px solid #d97706}
+      .brand{font-size:24px;font-weight:800;color:#d97706;letter-spacing:-0.5px}
+      .brand-sub{font-size:11px;color:#94a3b8;font-family:'DM Mono',monospace;margin-top:2px}
+      .title{font-size:20px;font-weight:700;color:#1e293b;margin-bottom:4px}
+      .date{font-size:12px;color:#64748b}
+      .badge{background:#fef3c7;color:#d97706;border:1px solid #fcd34d;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
+      table{width:100%;border-collapse:collapse;margin-top:8px}
+      th{padding:10px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;
+         color:#64748b;border-bottom:2px solid #e2e8f0;background:#f8fafc;font-weight:600}
+      td{padding:12px 14px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+      tr:last-child td{border-bottom:none}
+      tr:hover td{background:#fefce8}
+      .total-row td{background:#fef3c7;font-weight:700;border-top:2px solid #fcd34d}
+      .footer{margin-top:28px;padding-top:16px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8}
+      .firma{border-top:1px solid #cbd5e1;padding-top:4px;margin-top:24px;width:200px;text-align:center;font-size:10px;color:#94a3b8}
+      @media print{body{padding:20px}}
+    </style></head><body>
+      <div class="header">
+        <div>
+          <div class="brand">🔥 PARRILLAS</div>
+          <div class="brand-sub">sistema de gestión · costanera sur</div>
+        </div>
+        <div style="text-align:right">
+          <div class="title">Hoja de Despacho</div>
+          <div class="date">${fecha}</div>
+          <div style="margin-top:6px"><span class="badge">${pedidosDelDia.length} pedidos del día</span></div>
+        </div>
+      </div>
+      
+      <table>
+        <thead><tr>
+          <th>Producto</th><th>Unidad</th><th style="text-align:center">Total a despachar</th><th>Detalle por destino</th>
+        </tr></thead>
+        <tbody>
+          ${detalleHtml}
+          <tr class="total-row">
+            <td colspan="2">TOTAL UNIDADES</td>
+            <td style="text-align:center;font-size:18px">${rows.reduce((a,r)=>a+r.total,0)}</td>
+            <td>${pedidosDelDia.map(p=>p.nombreMostrar||p.destino).join(", ")}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="display:flex;gap:40px;margin-top:32px">
+        <div class="firma">Preparado por</div>
+        <div class="firma">Revisado por</div>
+        <div class="firma">Entregado por</div>
+      </div>
+
+      <div class="footer">
+        <span>Parrillas Costanera Sur — Sistema de Gestión</span>
+        <span>Impreso el ${new Date().toLocaleString("es-AR")}</span>
+      </div>
+    </body></html>`;
+    
+    const w = window.open("","_blank");
+    if(!w) return alert("Permitir ventanas emergentes para imprimir");
+    w.document.write(html); w.document.close();
+    setTimeout(()=>w.print(),500);
+  };
+
+  // ── PDF Análisis semanal / mensual ────────────────────────────
+  const pdfAnalisis = (periodo) => {
+    const hoyDate  = new Date();
+    let desde;
+    if(periodo==="semana") {
+      desde = new Date(hoyDate); desde.setDate(hoyDate.getDate()-7);
+    } else {
+      desde = new Date(hoyDate); desde.setMonth(hoyDate.getMonth()-1);
+    }
+    const desdeStr = desde.toISOString().slice(0,10);
+    const pedFiltrados = pedidos.filter(p=>p.fecha>=desdeStr);
+    
+    if(pedFiltrados.length===0) { alert(`Sin pedidos en la última ${periodo==="semana"?"semana":"mes"}.`); return; }
+
+    // Totales por producto
+    const totProd = {};
+    pedFiltrados.forEach(p=>p.items.forEach(it=>{
+      if(!totProd[it.producto]) totProd[it.producto]={producto:it.producto,unidad:it.unidad,total:0,locales:0,clientes:0};
+      totProd[it.producto].total += it.cantidad;
+      if(p.tipo==="local") totProd[it.producto].locales += it.cantidad;
+      else totProd[it.producto].clientes += it.cantidad;
+    }));
+    const prodRows = Object.values(totProd).sort((a,b)=>b.total-a.total);
+
+    // Totales por destino
+    const totDest = {};
+    pedFiltrados.forEach(p=>{
+      const n = p.nombreMostrar||p.destino;
+      if(!totDest[n]) totDest[n]={nombre:n,tipo:p.tipo,pedidos:0,unidades:0};
+      totDest[n].pedidos++;
+      totDest[n].unidades += p.items.reduce((a,i)=>a+i.cantidad,0);
+    });
+    const destRows = Object.values(totDest).sort((a,b)=>b.unidades-a.unidades);
+
+    const fechaDesde = desde.toLocaleDateString("es-AR");
+    const fechaHasta = hoyDate.toLocaleDateString("es-AR");
+    const titulo = `Análisis ${periodo==="semana"?"Semanal":"Mensual"} de Mercadería Saliente`;
+
+    const prodHtml = prodRows.map((r,i)=>`
+      <tr>
+        <td style="font-weight:600">${i+1}. ${r.producto}</td>
+        <td style="text-align:center;font-weight:700;font-size:15px;color:#d97706">${r.total} ${r.unidad}</td>
+        <td style="text-align:center;color:#2563eb">${r.locales} ${r.unidad}</td>
+        <td style="text-align:center;color:#ea580c">${r.clientes} ${r.unidad}</td>
+      </tr>`).join("");
+
+    const destHtml = destRows.map(r=>`
+      <tr>
+        <td style="font-weight:600">${r.nombre}</td>
+        <td><span style="background:${r.tipo==="local"?"#dbeafe":"#ffedd5"};color:${r.tipo==="local"?"#1d4ed8":"#9a3412"};padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600">${r.tipo==="local"?"Local":"Cliente ext."}</span></td>
+        <td style="text-align:center;font-weight:700">${r.pedidos}</td>
+        <td style="text-align:center;font-weight:700;color:#16a34a">${r.unidades} u.</td>
+      </tr>`).join("");
+
+    const html = `<html><head><title>${titulo}</title><style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:'Inter',Arial,sans-serif;padding:32px;color:#1e293b;background:#fff}
+      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:18px;border-bottom:3px solid #d97706}
+      .brand{font-size:22px;font-weight:800;color:#d97706}
+      .title{font-size:18px;font-weight:700;margin-bottom:3px}
+      .period{font-size:12px;color:#64748b}
+      .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+      .kpi{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;border-left:3px solid #d97706}
+      .kpi-label{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;font-weight:600;margin-bottom:4px}
+      .kpi-value{font-size:22px;font-weight:800;color:#d97706}
+      .section{margin-bottom:24px}
+      .section-title{font-size:14px;font-weight:700;margin-bottom:10px;color:#1e293b;border-left:3px solid #d97706;padding-left:10px}
+      table{width:100%;border-collapse:collapse}
+      th{padding:9px 12px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#64748b;border-bottom:2px solid #e2e8f0;background:#f8fafc;font-weight:600}
+      td{padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:12px}
+      .footer{margin-top:24px;padding-top:12px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8}
+    </style></head><body>
+      <div class="header">
+        <div>
+          <div class="brand">🔥 PARRILLAS</div>
+          <div style="font-size:10px;color:#94a3b8;margin-top:2px">costanera sur</div>
+        </div>
+        <div style="text-align:right">
+          <div class="title">${titulo}</div>
+          <div class="period">Del ${fechaDesde} al ${fechaHasta}</div>
+        </div>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi"><div class="kpi-label">Pedidos</div><div class="kpi-value">${pedFiltrados.length}</div></div>
+        <div class="kpi"><div class="kpi-label">Unidades salientes</div><div class="kpi-value">${prodRows.reduce((a,r)=>a+r.total,0)}</div></div>
+        <div class="kpi"><div class="kpi-label">Para locales</div><div class="kpi-value">${prodRows.reduce((a,r)=>a+r.locales,0)}</div></div>
+        <div class="kpi"><div class="kpi-label">Para clientes ext.</div><div class="kpi-value">${prodRows.reduce((a,r)=>a+r.clientes,0)}</div></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Mercadería saliente por producto</div>
+        <table>
+          <thead><tr><th>Producto</th><th style="text-align:center">Total</th><th style="text-align:center">→ Locales</th><th style="text-align:center">→ Clientes ext.</th></tr></thead>
+          <tbody>${prodHtml}</tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Pedidos por destino</div>
+        <table>
+          <thead><tr><th>Destino</th><th>Tipo</th><th style="text-align:center">Pedidos</th><th style="text-align:center">Unidades</th></tr></thead>
+          <tbody>${destHtml}</tbody>
+        </table>
+      </div>
+
+      <div class="footer">
+        <span>Parrillas Costanera Sur — Sistema de Gestión</span>
+        <span>Generado el ${new Date().toLocaleString("es-AR")}</span>
+      </div>
+    </body></html>`;
+
+    const w = window.open("","_blank");
+    if(!w) return alert("Permitir ventanas emergentes para imprimir");
+    w.document.write(html); w.document.close();
+    setTimeout(()=>w.print(),500);
+  };
   const totalU     = pedidos.reduce((a,p)=>a+p.items.reduce((b,i)=>b+i.cantidad,0),0);
   const clientes   = [...new Set(pedidos.filter(p=>p.tipo==="cliente").map(p=>p.nombreMostrar||p.destino))];
 
@@ -634,11 +850,24 @@ function ModuloPedidos({isAdmin}) {
         <KPI label="Clientes externos"     value={clientes.length.toString()} sub={clientes.slice(0,2).join(", ")||"—"} color={C.orange}/>
       </div>
 
-      {/* Tabs */}
-      <div style={{display:"flex",gap:8}}>
-        {isAdmin&&<TabBtn active={tab==="nuevo"} onClick={()=>setTab("nuevo")}>+ Nuevo pedido</TabBtn>}
-        <TabBtn active={tab==="historial"} onClick={()=>setTab("historial")}>📋 Historial</TabBtn>
-        <TabBtn active={tab==="analisis"} onClick={()=>setTab("analisis")} color={C.purple}>📊 Análisis</TabBtn>
+      {/* Tabs + acciones rápidas */}
+      <div style={{display:"flex",gap:8,alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{display:"flex",gap:8}}>
+          {isAdmin&&<TabBtn active={tab==="nuevo"} onClick={()=>setTab("nuevo")}>+ Nuevo pedido</TabBtn>}
+          <TabBtn active={tab==="historial"} onClick={()=>setTab("historial")}>📋 Historial</TabBtn>
+          <TabBtn active={tab==="analisis"} onClick={()=>setTab("analisis")} color={C.purple}>📊 Análisis</TabBtn>
+        </div>
+        {isAdmin&&(
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={hojaDespacho}
+              style={{background:C.accent,color:"#fff",border:"none",borderRadius:8,
+                padding:"7px 16px",fontFamily:"'Inter',sans-serif",fontWeight:600,
+                fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:6,
+                boxShadow:`0 2px 8px ${C.accent}40`}}>
+              🚚 Hoja de despacho del día
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── NUEVO PEDIDO ── */}
@@ -847,6 +1076,30 @@ function ModuloPedidos({isAdmin}) {
       {tab==="analisis"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
 
+          {/* Botones PDF análisis */}
+          <div style={{display:"flex",gap:10,padding:"14px 18px",
+            background:C.panel,border:`1px solid ${C.border}`,borderRadius:10,
+            alignItems:"center",justifyContent:"space-between"}}>
+            <div>
+              <div style={{fontWeight:600,fontSize:13,color:C.text,marginBottom:2}}>Reportes de análisis</div>
+              <div style={{fontSize:11,color:C.textSub}}>Exportá el resumen de mercadería saliente por período</div>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>pdfAnalisis("semana")}
+                style={{background:"#dbeafe",color:"#1d4ed8",border:"1px solid #93c5fd",borderRadius:8,
+                  padding:"8px 16px",fontFamily:"'Inter',sans-serif",fontWeight:600,fontSize:12,cursor:"pointer",
+                  display:"flex",alignItems:"center",gap:6}}>
+                📊 Análisis semanal
+              </button>
+              <button onClick={()=>pdfAnalisis("mes")}
+                style={{background:"#f3e8ff",color:"#7c3aed",border:"1px solid #c4b5fd",borderRadius:8,
+                  padding:"8px 16px",fontFamily:"'Inter',sans-serif",fontWeight:600,fontSize:12,cursor:"pointer",
+                  display:"flex",alignItems:"center",gap:6}}>
+                📅 Análisis mensual
+              </button>
+            </div>
+          </div>
+
           {/* Por local */}
           <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
             <div style={{padding:"13px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -897,7 +1150,7 @@ function ModuloPedidos({isAdmin}) {
                         <CartesianGrid strokeDasharray="3 3" stroke={C.border}/>
                         <XAxis dataKey="name" tick={{fill:C.textSub,fontSize:10}} axisLine={false} tickLine={false}/>
                         <YAxis tick={{fill:C.textSub,fontSize:9}} axisLine={false} tickLine={false}/>
-                        <Tooltip contentStyle={{background:C.card,border:`1px solid ${C.border}`,borderRadius:6}} formatter={v=>[v+" u.","Unidades"]}/>
+                        <Tooltip contentStyle={{background:"#ffffff",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,.1)"}} formatter={v=>[v+" u.","Unidades"]}/>
                         <Bar dataKey="unidades" name="Unidades" radius={[4,4,0,0]}>
                           {analisisLocales.filter(a=>a.pedidos>0).map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
                         </Bar>
@@ -1313,7 +1566,7 @@ function ModuloCostos({isAdmin}) {
                       <CartesianGrid strokeDasharray="3 3" stroke={C.border}/>
                       <XAxis type="number" tick={{fill:C.textSub,fontSize:9}} axisLine={false} tickLine={false} unit="%"/>
                       <YAxis type="category" dataKey="name" width={80} tick={{fill:C.text,fontSize:10}} axisLine={false} tickLine={false}/>
-                      <Tooltip formatter={v=>[v+"%","Margen local"]} contentStyle={{background:C.card,border:`1px solid ${C.border}`,borderRadius:6}}/>
+                      <Tooltip formatter={v=>[v+"%","Margen local"]} contentStyle={{background:"#ffffff",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,.1)"}}/>
                       <Bar dataKey="margen" fill={C.blue} radius={[0,4,4,0]}/>
                     </BarChart>
                   </ResponsiveContainer>}
@@ -1329,7 +1582,7 @@ function ModuloCostos({isAdmin}) {
                       <CartesianGrid strokeDasharray="3 3" stroke={C.border}/>
                       <XAxis type="number" tick={{fill:C.textSub,fontSize:9}} axisLine={false} tickLine={false} unit="%"/>
                       <YAxis type="category" dataKey="name" width={80} tick={{fill:C.text,fontSize:10}} axisLine={false} tickLine={false}/>
-                      <Tooltip formatter={v=>[v+"%","Margen mayorista"]} contentStyle={{background:C.card,border:`1px solid ${C.border}`,borderRadius:6}}/>
+                      <Tooltip formatter={v=>[v+"%","Margen mayorista"]} contentStyle={{background:"#ffffff",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,.1)"}}/>
                       <Bar dataKey="margen" fill={C.accent} radius={[0,4,4,0]}/>
                     </BarChart>
                   </ResponsiveContainer>}
@@ -1581,7 +1834,7 @@ function ModuloVentas({isAdmin}) {
                           <CartesianGrid strokeDasharray="3 3" stroke={C.border}/>
                           <XAxis dataKey="mes" tick={{fill:C.textSub,fontSize:10}} axisLine={false} tickLine={false}/>
                           <YAxis tick={{fill:C.textSub,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>"$"+Math.round(v/1000)+"k"}/>
-                          <Tooltip formatter={(v,n)=>[fmt(v),n]} contentStyle={{background:C.card,border:`1px solid ${C.border}`,borderRadius:6}}/>
+                          <Tooltip formatter={(v,n)=>[fmt(v),n]} contentStyle={{background:"#ffffff",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,.1)"}}/>
                           <Legend wrapperStyle={{fontFamily:"'DM Mono',monospace",fontSize:10}}/>
                           {LKEYS.map((k,i)=><Bar key={k} dataKey={k} name={LOCALES[i]} fill={COLORS[i]} radius={[3,3,0,0]}/>)}
                         </BarChart>
@@ -1590,7 +1843,7 @@ function ModuloVentas({isAdmin}) {
                           <CartesianGrid strokeDasharray="3 3" stroke={C.border}/>
                           <XAxis dataKey="mes" tick={{fill:C.textSub,fontSize:10}} axisLine={false} tickLine={false}/>
                           <YAxis tick={{fill:C.textSub,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>"$"+Math.round(v/1000)+"k"}/>
-                          <Tooltip formatter={(v,n)=>[fmt(v),n]} contentStyle={{background:C.card,border:`1px solid ${C.border}`,borderRadius:6}}/>
+                          <Tooltip formatter={(v,n)=>[fmt(v),n]} contentStyle={{background:"#ffffff",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,.1)"}}/>
                           <Legend wrapperStyle={{fontFamily:"'DM Mono',monospace",fontSize:10}}/>
                           {LKEYS.map((k,i)=><Line key={k} type="monotone" dataKey={k} name={LOCALES[i]} stroke={COLORS[i]} strokeWidth={2} dot={{r:3}}/>)}
                         </LineChart>
@@ -1600,7 +1853,7 @@ function ModuloVentas({isAdmin}) {
                             label={({name,percent})=>`${name} ${(percent*100).toFixed(0)}%`} labelLine={false} fontSize={10}>
                             {LOCALES.map((_,i)=><Cell key={i} fill={COLORS[i]}/>)}
                           </Pie>
-                          <Tooltip formatter={v=>[fmt(v),"Ventas"]} contentStyle={{background:C.card,border:`1px solid ${C.border}`,borderRadius:6}}/>
+                          <Tooltip formatter={v=>[fmt(v),"Ventas"]} contentStyle={{background:"#ffffff",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,.1)"}}/>
                         </PieChart>}
                   </ResponsiveContainer>}
             </div>
@@ -1658,7 +1911,7 @@ function ModuloVentas({isAdmin}) {
                         <CartesianGrid strokeDasharray="3 3" stroke={C.border}/>
                         <XAxis type="number" tick={{fill:C.textSub,fontSize:10}} axisLine={false} tickLine={false}/>
                         <YAxis type="category" dataKey="nombre" width={130} tick={{fill:C.text,fontSize:11}} axisLine={false} tickLine={false}/>
-                        <Tooltip contentStyle={{background:C.card,border:`1px solid ${C.border}`,borderRadius:6}}/>
+                        <Tooltip contentStyle={{background:"#ffffff",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,.1)"}}/>
                         <Bar dataKey="unidades" name="Unidades" radius={[0,4,4,0]}>
                           {cliList.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
                         </Bar>
@@ -1686,10 +1939,10 @@ function Login({onLogin}) {
   };
 
   return (
-    <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Syne',sans-serif"}}>
-      <div style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:16,
+    <div style={{minHeight:"100vh",background:"linear-gradient(135deg, #fef3c7 0%, #fff7ed 50%, #fef9ee 100%)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',sans-serif"}}>
+      <div style={{background:"#ffffff",border:`1px solid ${C.border}`,borderRadius:16,
         padding:"48px 44px",width:360,display:"flex",flexDirection:"column",gap:24,
-        boxShadow:"0 24px 60px rgba(0,0,0,.5)"}}>
+        boxShadow:"0 20px 60px rgba(0,0,0,.12)"}}>
         <div style={{textAlign:"center"}}>
           <div style={{fontSize:36,marginBottom:8}}>🔥</div>
           <div style={{color:C.accent,fontWeight:800,fontSize:22,letterSpacing:-0.5}}>PARRILLAS</div>
@@ -1752,15 +2005,16 @@ export default function App() {
   const isAdmin = role==="admin";
 
   return (
-    <div style={{display:"flex",minHeight:"100vh",background:C.bg,fontFamily:"'Syne',sans-serif",color:C.text}}>
-      <div style={{width:200,background:C.panel,borderRight:`1px solid ${C.border}`,
-        display:"flex",flexDirection:"column",flexShrink:0,position:"sticky",top:0,height:"100vh"}}>
-        <div style={{padding:"22px 18px 18px",borderBottom:`1px solid ${C.border}`,
-          background:`linear-gradient(135deg, ${C.panel} 0%, ${C.card} 100%)`}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
-            <span style={{fontSize:22}}>🔥</span>
+    <div style={{display:"flex",height:"100vh",width:"100vw",background:C.bg,fontFamily:"'Inter',sans-serif",color:C.text,overflow:"hidden"}}>
+      <div style={{width:220,background:C.panel,borderRight:`1px solid ${C.border}`,
+        display:"flex",flexDirection:"column",flexShrink:0,height:"100vh",
+        boxShadow:"2px 0 8px rgba(0,0,0,.06)"}}>
+        <div style={{padding:"22px 18px 18px",borderBottom:`1px solid ${C.border}`}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+            <div style={{width:36,height:36,borderRadius:9,background:C.accent,
+              display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🔥</div>
             <div>
-              <div style={{color:C.accent,fontWeight:800,fontSize:15,letterSpacing:-0.5}}>PARRILLAS</div>
+              <div style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:15,letterSpacing:-0.5}}>PARRILLAS</div>
               <div style={{color:C.muted,fontSize:9,fontFamily:"'DM Mono',monospace"}}>costanera sur</div>
             </div>
           </div>
@@ -1768,14 +2022,19 @@ export default function App() {
         <nav style={{flex:1,padding:"8px 6px",display:"flex",flexDirection:"column",gap:2,overflowY:"auto"}}>
           {MODS.map(m=>(
             <button key={m.id} onClick={()=>setMod(m.id)}
-              style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,border:"none",
+              style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,border:"none",
                 cursor:"pointer",textAlign:"left",width:"100%",
-                background:mod===m.id?C.accent+"15":"transparent",
-                boxShadow:mod===m.id?`inset 0 0 0 1px ${C.accent}33`:"none",
-                transition:"all .15s"}}>
-              <span style={{fontSize:18,filter:mod===m.id?"none":"grayscale(.4)"}}>{m.icon}</span>
+                background:mod===m.id?"#fef3c7":"transparent",
+                transition:"all .15s"}}
+              onMouseEnter={e=>{ if(mod!==m.id) e.currentTarget.style.background="#f8fafc"; }}
+              onMouseLeave={e=>{ if(mod!==m.id) e.currentTarget.style.background="transparent"; }}>
+              <div style={{width:32,height:32,borderRadius:8,
+                background:mod===m.id?C.accent+"20":"#f1f5f9",
+                display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>
+                {m.icon}
+              </div>
               <div>
-                <div style={{color:mod===m.id?C.accent:C.text,fontSize:12,fontWeight:mod===m.id?700:400,letterSpacing:mod===m.id?-.3:0}}>{m.label}</div>
+                <div style={{color:mod===m.id?C.accent:C.text,fontSize:12,fontWeight:mod===m.id?600:400}}>{m.label}</div>
                 <div style={{color:C.muted,fontSize:9,fontFamily:"'DM Mono',monospace",marginTop:1}}>{m.desc}</div>
               </div>
             </button>
@@ -1799,9 +2058,9 @@ export default function App() {
         </div>
       </div>
 
-      <div style={{flex:1,overflow:"auto"}}>
+      <div style={{flex:1,overflow:"auto",display:"flex",flexDirection:"column",minWidth:0}}>
         <div style={{padding:"18px 28px",borderBottom:`1px solid ${C.border}`,background:C.panel,position:"sticky",top:0,zIndex:10,
-          boxShadow:"0 1px 0 "+C.border}}>
+          boxShadow:`0 1px 0 ${C.border}, 0 2px 4px rgba(0,0,0,.04)`}}>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
             <div style={{width:40,height:40,borderRadius:10,background:C.accent+"18",
               display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,
@@ -1819,7 +2078,7 @@ export default function App() {
             )}
           </div>
         </div>
-        <div style={{padding:"22px 26px"}}>
+        <div style={{padding:"24px 32px",flex:1}}>
           {mod==="sueldos"     && <ModuloSueldos     isAdmin={isAdmin}/>}
           {mod==="stock"       && <ModuloStock        isAdmin={isAdmin}/>}
           {mod==="pedidos"     && <ModuloPedidos      isAdmin={isAdmin}/>}
