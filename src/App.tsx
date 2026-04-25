@@ -839,8 +839,118 @@ function ModuloPedidos({isAdmin}) {
   const cantItem = stockId => itemCant[stockId]??1;
   const inFormItem = stockId => form.items.find(i=>i.stockId===stockId);
 
+  // ── Edición de pedido ──────────────────────────────────────
+  const [editingPedido, setEditingPedido] = useState(null); // pedido completo siendo editado
+  const [editProdQ, setEditProdQ]         = useState("");
+
+  const openEdit = (p) => {
+    setEditingPedido({...p, items:[...p.items.map(i=>({...i}))]});
+    setEditProdQ("");
+    setTab("editar");
+  };
+
+  const editAddItem = (prod, cant) => {
+    const c = Math.max(1, +(cant||1));
+    const existe = editingPedido.items.find(i=>i.stockId===prod.id);
+    if(existe) setEditingPedido(ep=>({...ep,items:ep.items.map(i=>i.stockId===prod.id?{...i,cantidad:i.cantidad+c}:i)}));
+    else setEditingPedido(ep=>({...ep,items:[...ep.items,{stockId:prod.id,producto:prod.producto,cantidad:c,unidad:prod.unidad||"u"}]}));
+  };
+
+  const editRemoveItem = stockId => setEditingPedido(ep=>({...ep,items:ep.items.filter(i=>i.stockId!==stockId)}));
+
+  const confirmarEdicion = () => {
+    if(!editingPedido||!editingPedido.items.length) return;
+    // Revertir stock del pedido original, aplicar el editado
+    const original = pedidos.find(p=>p.id===editingPedido.id);
+    let newStock = [...stock];
+    if(original) {
+      // Devolver stock original
+      newStock = newStock.map(s=>{
+        const oldIt = original.items.find(i=>i.stockId===s.id);
+        return oldIt ? {...s,stock:s.stock+oldIt.cantidad} : s;
+      });
+    }
+    // Descontar nuevo pedido
+    newStock = newStock.map(s=>{
+      const newIt = editingPedido.items.find(i=>i.stockId===s.id);
+      return newIt ? {...s,stock:Math.max(0,s.stock-newIt.cantidad)} : s;
+    });
+    setStock(newStock);
+    const nombreMostrar = editingPedido.tipo==="cliente"&&editingPedido.clienteNombre
+      ? editingPedido.clienteNombre : editingPedido.tipo==="local" ? editingPedido.destino : "Cliente externo";
+    saveP(pedidos.map(p=>p.id===editingPedido.id?{...editingPedido,nombreMostrar,editadoEl:new Date().toLocaleString("es-AR")}:p));
+    setEditingPedido(null);
+    setTab("historial");
+  };
+
+  // ── Borrado con contraseña ────────────────────────────────
+  const [deleteModal, setDeleteModal] = useState(null); // {id, pass, error}
+  const PASS_DELETE = PASS_ADMIN; // misma contraseña admin
+
+  const confirmarBorrado = () => {
+    if(deleteModal.pass !== PASS_DELETE) {
+      setDeleteModal(m=>({...m,error:true,pass:""}));
+      setTimeout(()=>setDeleteModal(m=>m?{...m,error:false}:null),1500);
+      return;
+    }
+    saveP(pedidos.filter(x=>x.id!==deleteModal.id));
+    setDeleteModal(null);
+  };
+
+  const editProdFiltrado = editProdQ.trim()===""
+    ? stock
+    : stock.filter(s=>s.producto.toLowerCase().includes(editProdQ.toLowerCase()));
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
+
+      {/* ── MODAL BORRADO CON CONTRASEÑA ── */}
+      {deleteModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:999,
+          display:"flex",alignItems:"center",justifyContent:"center"}}
+          onClick={e=>e.target===e.currentTarget&&setDeleteModal(null)}>
+          <div style={{background:"#fff",border:"1px solid #fecaca",borderRadius:14,
+            padding:"32px",width:380,display:"flex",flexDirection:"column",gap:18,
+            boxShadow:"0 20px 60px rgba(0,0,0,.15)"}}>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:36,marginBottom:8}}>🔐</div>
+              <div style={{fontWeight:700,fontSize:16,color:"#1e293b",marginBottom:4}}>Confirmar eliminación</div>
+              <div style={{fontSize:12,color:"#64748b"}}>Esta acción no se puede deshacer. Ingresá la contraseña de admin para continuar.</div>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:"#64748b",fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Contraseña de administrador</div>
+              <input
+                type="password"
+                value={deleteModal.pass}
+                autoFocus
+                onChange={e=>setDeleteModal(m=>({...m,pass:e.target.value,error:false}))}
+                onKeyDown={e=>e.key==="Enter"&&confirmarBorrado()}
+                placeholder="Ingresá la contraseña…"
+                style={{width:"100%",border:`1px solid ${deleteModal.error?"#f26c6c":"#e2e8f0"}`,borderRadius:8,
+                  padding:"10px 14px",fontSize:13,fontFamily:"'Inter',sans-serif",
+                  outline:"none",boxSizing:"border-box",transition:"border-color .2s",
+                  background:deleteModal.error?"#fef2f2":"#fff",color:"#1e293b"}}/>
+              {deleteModal.error&&(
+                <div style={{color:"#dc2626",fontSize:11,marginTop:6,fontFamily:"'DM Mono',monospace"}}>
+                  ✕ Contraseña incorrecta
+                </div>
+              )}
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setDeleteModal(null)}
+                style={{flex:1,background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,
+                  padding:"10px",fontFamily:"'Inter',sans-serif",fontWeight:600,fontSize:13,cursor:"pointer",color:"#64748b"}}>
+                Cancelar
+              </button>
+              <button onClick={confirmarBorrado}
+                style={{flex:1,background:"#dc2626",border:"none",borderRadius:8,
+                  padding:"10px",fontFamily:"'Inter',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer",color:"#fff"}}>
+                Eliminar pedido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* KPIs */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
@@ -856,6 +966,7 @@ function ModuloPedidos({isAdmin}) {
           {isAdmin&&<TabBtn active={tab==="nuevo"} onClick={()=>setTab("nuevo")}>+ Nuevo pedido</TabBtn>}
           <TabBtn active={tab==="historial"} onClick={()=>setTab("historial")}>📋 Historial</TabBtn>
           <TabBtn active={tab==="analisis"} onClick={()=>setTab("analisis")} color={C.purple}>📊 Análisis</TabBtn>
+          {tab==="editar"&&<TabBtn active={true} onClick={()=>{}} color={C.blue}>✎ Editando pedido</TabBtn>}
         </div>
         {isAdmin&&(
           <div style={{display:"flex",gap:8}}>
@@ -1054,8 +1165,23 @@ function ModuloPedidos({isAdmin}) {
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         <Badge color={C.green}>{p.items.reduce((a,i)=>a+i.cantidad,0)} u. totales</Badge>
-                        {isAdmin&&<button onClick={()=>saveP(pedidos.filter(x=>x.id!==p.id))}
-                          style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:14,opacity:.5}}>×</button>}
+                        {p.editadoEl&&<Badge color={C.muted}>✎ editado</Badge>}
+                        {isAdmin&&(
+                          <>
+                            <button onClick={()=>openEdit(p)}
+                              style={{background:"transparent",border:`1px solid ${C.border}`,color:C.blue,
+                                cursor:"pointer",fontSize:11,borderRadius:6,padding:"3px 10px",
+                                fontFamily:"'Inter',sans-serif",fontWeight:500}}>
+                              ✎ Editar
+                            </button>
+                            <button onClick={()=>setDeleteModal({id:p.id,pass:"",error:false})}
+                              style={{background:"transparent",border:`1px solid #fecaca`,color:C.red,
+                                cursor:"pointer",fontSize:11,borderRadius:6,padding:"3px 10px",
+                                fontFamily:"'Inter',sans-serif",fontWeight:500}}>
+                              Eliminar
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                     <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
@@ -1069,6 +1195,141 @@ function ModuloPedidos({isAdmin}) {
                   </div>
                 ))}
               </div>}
+        </div>
+      )}
+
+      {/* ── EDITAR PEDIDO ── */}
+      {tab==="editar"&&editingPedido&&isAdmin&&(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          {/* Header */}
+          <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,padding:"14px 18px",
+            display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontWeight:700,fontSize:14,color:"#1e40af"}}>Editando pedido de {editingPedido.nombreMostrar||editingPedido.destino}</div>
+              <div style={{fontSize:11,color:"#3b82f6",marginTop:2}}>
+                {editingPedido.fecha} · {editingPedido.hora} — Podés modificar productos y cantidades
+              </div>
+            </div>
+            <button onClick={()=>{setEditingPedido(null);setTab("historial");}}
+              style={{background:"transparent",border:"1px solid #bfdbfe",borderRadius:7,
+                padding:"6px 14px",color:"#3b82f6",cursor:"pointer",fontSize:12,fontFamily:"'Inter',sans-serif",fontWeight:500}}>
+              ← Volver sin guardar
+            </button>
+          </div>
+
+          {/* Datos del pedido */}
+          <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"16px",display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{fontWeight:600,fontSize:13,color:"#1e293b",marginBottom:4}}>Datos del pedido</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+              <div>
+                <div style={{fontSize:9,color:"#64748b",fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Tipo</div>
+                <select style={{...inp,width:"100%"}} value={editingPedido.tipo}
+                  onChange={e=>setEditingPedido(ep=>({...ep,tipo:e.target.value,
+                    destino:e.target.value==="local"?"LITO'S":"",clienteNombre:""}))}>
+                  <option value="local">Local propio</option>
+                  <option value="cliente">Cliente externo</option>
+                </select>
+              </div>
+              {editingPedido.tipo==="local"
+                ? <div>
+                    <div style={{fontSize:9,color:"#64748b",fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Local</div>
+                    <select style={{...inp,width:"100%"}} value={editingPedido.destino}
+                      onChange={e=>setEditingPedido(ep=>({...ep,destino:e.target.value}))}>
+                      {LOCALES_OPT.map(l=><option key={l}>{l}</option>)}
+                    </select>
+                  </div>
+                : <div>
+                    <div style={{fontSize:9,color:"#64748b",fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Nombre del cliente</div>
+                    <input style={{...inp,width:"100%"}} value={editingPedido.clienteNombre||""}
+                      onChange={e=>setEditingPedido(ep=>({...ep,clienteNombre:e.target.value}))}/>
+                  </div>}
+              <div>
+                <div style={{fontSize:9,color:"#64748b",fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Fecha</div>
+                <input type="date" style={{...inp,width:"100%"}} value={editingPedido.fecha}
+                  onChange={e=>setEditingPedido(ep=>({...ep,fecha:e.target.value}))}/>
+              </div>
+            </div>
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+            {/* Buscador productos */}
+            <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+              <div style={{padding:"12px 16px",borderBottom:"1px solid #e2e8f0",background:"#f8fafc"}}>
+                <div style={{fontWeight:600,fontSize:13,color:"#1e293b",marginBottom:8}}>Agregar / modificar productos</div>
+                <input value={editProdQ} onChange={e=>setEditProdQ(e.target.value)}
+                  placeholder="🔍  Buscar producto…"
+                  style={{...inp,width:"100%",boxSizing:"border-box"}}/>
+              </div>
+              <div style={{overflowY:"auto",maxHeight:360}}>
+                {editProdFiltrado.map(s=>{
+                  const enForm = editingPedido.items.find(i=>i.stockId===s.id);
+                  return (
+                    <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",
+                      borderBottom:"1px solid #f1f5f9",background:enForm?"#fffbeb":"transparent",
+                      transition:"background .12s"}}
+                      onMouseEnter={e=>{if(!enForm)e.currentTarget.style.background="#f8fafc";}}
+                      onMouseLeave={e=>{if(!enForm)e.currentTarget.style.background=enForm?"#fffbeb":"transparent";}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:600,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.producto}</div>
+                        <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>stock: {s.stock} {s.unidad||"u"} · {s.deposito===1?"M.Acosta":"Cruz"}</div>
+                      </div>
+                      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                        <input type="number" min="1" defaultValue={1}
+                          id={`edit-cant-${s.id}`}
+                          style={{...inp,width:50,padding:"3px 6px",fontSize:11,textAlign:"center"}}/>
+                        <button onClick={()=>{
+                            const el=document.getElementById(`edit-cant-${s.id}`);
+                            editAddItem(s, el?el.value:1);
+                          }}
+                          style={{background:enForm?C.accent:C.green,border:"none",borderRadius:6,
+                            padding:"4px 10px",color:"#fff",cursor:"pointer",fontSize:11,
+                            fontFamily:"'Inter',sans-serif",fontWeight:600,whiteSpace:"nowrap"}}>
+                          {enForm?"+":"Agregar"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Items actuales */}
+            <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+              <div style={{padding:"12px 16px",borderBottom:"1px solid #e2e8f0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontWeight:600,fontSize:13,color:"#1e293b"}}>Productos en el pedido</span>
+                <Badge color={C.accent}>{editingPedido.items.length} productos</Badge>
+              </div>
+              {editingPedido.items.length===0
+                ? <div style={{padding:"24px",textAlign:"center",color:"#94a3b8",fontSize:12}}>Sin productos</div>
+                : <div style={{flex:1,overflowY:"auto",maxHeight:290}}>
+                    {editingPedido.items.map((it,i)=>(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",
+                        borderBottom:"1px solid #f1f5f9"}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontWeight:600,fontSize:12}}>{it.producto}</div>
+                          <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
+                            <input type="number" min="1" value={it.cantidad}
+                              onChange={e=>setEditingPedido(ep=>({...ep,
+                                items:ep.items.map((x,j)=>j===i?{...x,cantidad:Math.max(1,+e.target.value)}:x)}))}
+                              style={{...inp,width:60,padding:"3px 6px",fontSize:12}}/>
+                            <span style={{fontSize:11,color:"#94a3b8"}}>{it.unidad}</span>
+                          </div>
+                        </div>
+                        <button onClick={()=>editRemoveItem(it.stockId)}
+                          style={{background:"transparent",border:"1px solid #fecaca",color:"#dc2626",
+                            cursor:"pointer",fontSize:12,borderRadius:6,padding:"3px 8px"}}>×</button>
+                      </div>
+                    ))}
+                  </div>}
+              <div style={{padding:"14px 16px",borderTop:"1px solid #e2e8f0"}}>
+                <button onClick={confirmarEdicion}
+                  style={{width:"100%",background:"#2563eb",color:"#fff",border:"none",borderRadius:8,
+                    padding:"12px",fontFamily:"'Inter',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                  ✓ Guardar cambios en el pedido
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
