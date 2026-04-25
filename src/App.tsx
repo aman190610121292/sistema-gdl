@@ -12,9 +12,10 @@ document.head.appendChild(fl);
 
 // ── COLORES ───────────────────────────────────────────────────
 const C = {
-  bg:"#0d0f14", panel:"#13161e", card:"#1a1e2a", border:"#252a38",
-  accent:"#e8c547", green:"#4ade80", red:"#f87171", blue:"#60a5fa",
-  orange:"#f97316", purple:"#a78bfa", muted:"#5a6070", text:"#e2e6f0", textSub:"#8a92a6"
+  bg:"#0a0c10", panel:"#11141c", card:"#171b26", border:"#1e2436",
+  accent:"#f0c040", green:"#3dd68c", red:"#f26c6c", blue:"#5ba3f5",
+  orange:"#f5813a", purple:"#9d7de8", muted:"#4a5568", text:"#e8ecf4", textSub:"#7c88a0",
+  accentDim:"#b89020"
 };
 const COLORS = ["#e8c547","#60a5fa","#4ade80","#f97316","#a78bfa","#f472b6"];
 const fmt = (n) => "$" + Math.round(n).toLocaleString("es-AR");
@@ -172,28 +173,33 @@ function exportPDF(titulo, rows, cols) {
 }
 
 // ── UI ────────────────────────────────────────────────────────
-const inp = {background:C.bg,border:`1px solid ${C.border}`,borderRadius:5,
-  padding:"7px 10px",color:C.text,fontSize:12,fontFamily:"'DM Mono',monospace",outline:"none"};
+const inp = {background:C.bg,border:`1px solid ${C.border}`,borderRadius:7,
+  padding:"8px 11px",color:C.text,fontSize:12,fontFamily:"'DM Mono',monospace",outline:"none",
+  transition:"border-color .15s"};
 
 const Badge = ({children,color=C.accent}) => (
-  <span style={{background:color+"22",color,border:`1px solid ${color}44`,
-    padding:"2px 8px",borderRadius:4,fontSize:10,fontFamily:"'DM Mono',monospace",fontWeight:600,whiteSpace:"nowrap"}}>
+  <span style={{background:color+"1a",color,border:`1px solid ${color}33`,
+    padding:"2px 9px",borderRadius:20,fontSize:10,fontFamily:"'DM Mono',monospace",
+    fontWeight:600,whiteSpace:"nowrap",letterSpacing:.3}}>
     {children}
   </span>
 );
 
 const KPI = ({label,value,sub,color=C.accent}) => (
-  <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:"15px 18px",borderLeft:`3px solid ${color}`}}>
-    <div style={{color:C.textSub,fontSize:10,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>{label}</div>
-    <div style={{color,fontSize:20,fontFamily:"'Syne',sans-serif",fontWeight:700,lineHeight:1.1}}>{value}</div>
-    {sub && <div style={{color:C.muted,fontSize:10,marginTop:3}}>{sub}</div>}
+  <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,
+    padding:"16px 20px",borderLeft:`3px solid ${color}`,
+    boxShadow:"0 2px 8px rgba(0,0,0,.2)"}}>
+    <div style={{color:C.textSub,fontSize:9,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1.5,marginBottom:6}}>{label}</div>
+    <div style={{color,fontSize:22,fontFamily:"'Syne',sans-serif",fontWeight:800,lineHeight:1.1,letterSpacing:-.5}}>{value}</div>
+    {sub && <div style={{color:C.muted,fontSize:10,marginTop:4,fontFamily:"'DM Mono',monospace"}}>{sub}</div>}
   </div>
 );
 
 const Th = ({children,style={}}) => (
-  <th style={{padding:"8px 12px",textAlign:"left",color:C.textSub,fontSize:10,
-    fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1,
-    borderBottom:`1px solid ${C.border}`,fontWeight:500,whiteSpace:"nowrap",...style}}>{children}</th>
+  <th style={{padding:"9px 14px",textAlign:"left",color:C.textSub,fontSize:9,
+    fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1.5,
+    borderBottom:`1px solid ${C.border}`,fontWeight:600,whiteSpace:"nowrap",
+    background:C.panel,...style}}>{children}</th>
 );
 const Td = ({children,style={},colSpan}) => (
   <td colSpan={colSpan} style={{padding:"7px 12px",color:C.text,fontSize:12,
@@ -206,20 +212,23 @@ const rh = {
 };
 
 const TabBtn = ({active,onClick,children,color=C.accent}) => (
-  <button onClick={onClick} style={{background:active?color:C.bg,
-    color:active?(color===C.accent?C.bg:"#000"):C.textSub,
-    border:`1px solid ${active?color:C.border}`,borderRadius:5,
-    padding:"4px 11px",fontFamily:"'DM Mono',monospace",fontSize:10,cursor:"pointer"}}>{children}</button>
+  <button onClick={onClick} style={{background:active?color+"22":C.card,
+    color:active?color:C.textSub,
+    border:`1px solid ${active?color:C.border}`,borderRadius:7,
+    padding:"6px 14px",fontFamily:"'Syne',sans-serif",fontWeight:active?700:500,
+    fontSize:11,cursor:"pointer",transition:"all .15s"}}>{children}</button>
 );
 
 const SmBtn = ({onClick,children,color=C.green}) => (
-  <button onClick={onClick} style={{background:color,border:"none",borderRadius:4,
-    padding:"3px 8px",color:"#000",cursor:"pointer",fontSize:10}}>{children}</button>
+  <button onClick={onClick} style={{background:color,border:"none",borderRadius:6,
+    padding:"5px 12px",color:"#000",cursor:"pointer",fontSize:11,
+    fontFamily:"'Syne',sans-serif",fontWeight:700}}>{children}</button>
 );
 
 const GhBtn = ({onClick,children}) => (
   <button onClick={onClick} style={{background:"transparent",border:`1px solid ${C.border}`,
-    borderRadius:3,padding:"1px 5px",color:C.textSub,cursor:"pointer",fontSize:9}}>{children}</button>
+    borderRadius:5,padding:"3px 9px",color:C.textSub,cursor:"pointer",fontSize:10,
+    fontFamily:"'DM Mono',monospace",transition:"all .12s"}}>{children}</button>
 );
 
 const Saved = ({show}) => (
@@ -231,12 +240,12 @@ const Saved = ({show}) => (
 
 const PDFBtn = ({onClick}) => (
   <button onClick={onClick}
-    style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,
+    style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:7,
       padding:"5px 12px",color:C.textSub,cursor:"pointer",fontSize:11,
-      fontFamily:"'DM Mono',monospace",display:"inline-flex",alignItems:"center",gap:5}}
-    onMouseEnter={e=>{e.currentTarget.style.borderColor=C.accent;e.currentTarget.style.color=C.accent;}}
-    onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.color=C.textSub;}}>
-    📄 PDF
+      fontFamily:"'DM Mono',monospace",display:"inline-flex",alignItems:"center",gap:5,transition:"all .15s"}}
+    onMouseEnter={e=>{e.currentTarget.style.borderColor=C.accent;e.currentTarget.style.color=C.accent;e.currentTarget.style.background=C.accent+"11";}}
+    onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.color=C.textSub;e.currentTarget.style.background="transparent";}}>
+    📄 Exportar PDF
   </button>
 );
 
@@ -523,27 +532,35 @@ function ModuloStock({isAdmin}) {
 const LOCALES_OPT = ["LITO'S","FARO","HOMERO","DON JOSÉ","GAUCHITO","AMPARITO"];
 
 function ModuloPedidos({isAdmin}) {
-  const [stock, setStock]     = useSaved("parrillas-stock", STOCK_INIT);
+  const [stock, setStock]     = useSaved("parrillas-stock",   STOCK_INIT);
   const [pedidos, setPedidos] = useSaved("parrillas-pedidos", []);
-  const [saved, setSaved]     = useState(false);
-  const [search, setSearch]   = useState("");
+  const [saved,   setSaved]   = useState(false);
+  const [tab, setTab]         = useState("nuevo"); // nuevo | historial | analisis
+  const [search,  setSearch]  = useState("");      // historial search
+  const [prodQ,   setProdQ]   = useState("");      // product search in form
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({tipo:"local",destino:"LITO'S",clienteNombre:"",
-    fecha:new Date().toISOString().slice(0,10),items:[]});
-  const [itemForm, setItemForm] = useState({stockId:"",cantidad:"1"});
+  const [form, setForm] = useState({
+    tipo:"local", destino:"LITO'S", clienteNombre:"",
+    fecha:new Date().toISOString().slice(0,10), items:[]
+  });
+  const [itemCant, setItemCant] = useState({}); // stockId -> cantidad string
 
   const saveP = next => { setPedidos(next); setSaved(true); setTimeout(()=>setSaved(false),2000); };
 
-  const addItem = () => {
-    if(!itemForm.stockId) return;
-    const prod = stock.find(s=>s.id===+itemForm.stockId);
-    if(!prod) return;
-    const cant = Math.max(1,+itemForm.cantidad);
+  // Filtrar productos del stock según búsqueda
+  const stockFiltrado = prodQ.trim()===""
+    ? stock
+    : stock.filter(s=>s.producto.toLowerCase().includes(prodQ.toLowerCase()));
+
+  const addItem = (prod, cant) => {
+    const c = Math.max(1, +(cant||1));
     const existe = form.items.find(i=>i.stockId===prod.id);
-    if(existe) setForm(f=>({...f,items:f.items.map(i=>i.stockId===prod.id?{...i,cantidad:i.cantidad+cant}:i)}));
-    else setForm(f=>({...f,items:[...f.items,{stockId:prod.id,producto:prod.producto,cantidad:cant,unidad:prod.unidad||"u"}]}));
-    setItemForm({stockId:"",cantidad:"1"});
+    if(existe) setForm(f=>({...f,items:f.items.map(i=>i.stockId===prod.id?{...i,cantidad:i.cantidad+c}:i)}));
+    else setForm(f=>({...f,items:[...f.items,{stockId:prod.id,producto:prod.producto,cantidad:c,unidad:prod.unidad||"u"}]}));
+    setItemCant(v=>({...v,[prod.id]:""}));
   };
+
+  const removeItem = stockId => setForm(f=>({...f,items:f.items.filter(i=>i.stockId!==stockId)}));
 
   const confirmar = () => {
     if(!form.items.length) return;
@@ -558,175 +575,391 @@ function ModuloPedidos({isAdmin}) {
     },...pedidos]);
     setForm({tipo:"local",destino:"LITO'S",clienteNombre:"",
       fecha:new Date().toISOString().slice(0,10),items:[]});
-    setShowForm(false);
+    setProdQ(""); setItemCant({});
+    setTab("historial");
   };
 
-  const filtrado  = search ? pedidos.filter(p=>(p.nombreMostrar||"").toLowerCase().includes(search.toLowerCase())) : pedidos;
-  const hoy       = new Date().toISOString().slice(0,10);
-  const pedidosHoy= pedidos.filter(p=>p.fecha===hoy).length;
-  const totalU    = pedidos.reduce((a,p)=>a+p.items.reduce((b,i)=>b+i.cantidad,0),0);
-  const clientes  = [...new Set(pedidos.filter(p=>p.tipo==="cliente").map(p=>p.nombreMostrar||p.destino))];
+  // Stats
+  const hoy        = new Date().toISOString().slice(0,10);
+  const pedidosHoy = pedidos.filter(p=>p.fecha===hoy).length;
+  const totalU     = pedidos.reduce((a,p)=>a+p.items.reduce((b,i)=>b+i.cantidad,0),0);
+  const clientes   = [...new Set(pedidos.filter(p=>p.tipo==="cliente").map(p=>p.nombreMostrar||p.destino))];
+
+  // Historial filtrado
+  const filtrado = search
+    ? pedidos.filter(p=>(p.nombreMostrar||"").toLowerCase().includes(search.toLowerCase())||
+        p.items.some(i=>i.producto.toLowerCase().includes(search.toLowerCase())))
+    : pedidos;
+
+  // Análisis: por local
+  const analisisLocales = LOCALES_OPT.map(local=>{
+    const ps = pedidos.filter(p=>p.tipo==="local"&&p.destino===local);
+    const unidades = ps.reduce((a,p)=>a+p.items.reduce((b,i)=>b+i.cantidad,0),0);
+    // top productos
+    const prodMap = {};
+    ps.forEach(p=>p.items.forEach(i=>{
+      prodMap[i.producto]=(prodMap[i.producto]||0)+i.cantidad;
+    }));
+    const topProd = Object.entries(prodMap).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    return {local, pedidos:ps.length, unidades, topProd};
+  });
+
+  // Análisis: por cliente externo
+  const analisisClientes = clientes.map(nombre=>{
+    const ps = pedidos.filter(p=>p.tipo==="cliente"&&(p.nombreMostrar||p.destino)===nombre);
+    const unidades = ps.reduce((a,p)=>a+p.items.reduce((b,i)=>b+i.cantidad,0),0);
+    const prodMap = {};
+    ps.forEach(p=>p.items.forEach(i=>{
+      prodMap[i.producto]=(prodMap[i.producto]||0)+i.cantidad;
+    }));
+    const topProd = Object.entries(prodMap).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    const ultimo  = ps[0]?.fecha||"—";
+    return {nombre, pedidos:ps.length, unidades, topProd, ultimo};
+  }).sort((a,b)=>b.unidades-a.unidades);
+
+  const dm = {fontFamily:"'DM Mono',monospace"};
+
+  // Item en form: cantidad actual
+  const cantItem = stockId => itemCant[stockId]??1;
+  const inFormItem = stockId => form.items.find(i=>i.stockId===stockId);
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
+
+      {/* KPIs */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
-        <KPI label="Pedidos totales" value={pedidos.length.toString()} sub="Historial"/>
-        <KPI label="Pedidos hoy" value={pedidosHoy.toString()} sub={new Date().toLocaleDateString("es-AR")} color={C.blue}/>
-        <KPI label="Unidades despachadas" value={totalU.toString()} sub="Total histórico" color={C.green}/>
-        <KPI label="Clientes externos" value={clientes.length.toString()} sub={clientes.slice(0,2).join(", ")||"—"} color={C.orange}/>
+        <KPI label="Pedidos totales"       value={pedidos.length.toString()} sub="Historial completo"/>
+        <KPI label="Pedidos hoy"           value={pedidosHoy.toString()} sub={new Date().toLocaleDateString("es-AR")} color={C.blue}/>
+        <KPI label="Unidades despachadas"  value={totalU.toString()} sub="Total histórico" color={C.green}/>
+        <KPI label="Clientes externos"     value={clientes.length.toString()} sub={clientes.slice(0,2).join(", ")||"—"} color={C.orange}/>
       </div>
 
-      {isAdmin&&(
-        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
-            <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14}}>Nuevo Pedido</span>
-            <button onClick={()=>setShowForm(!showForm)}
-              style={{background:showForm?C.muted:C.accent,color:C.bg,border:"none",borderRadius:6,
-                padding:"6px 14px",fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:12,cursor:"pointer"}}>
-              {showForm?"Cancelar":"+ Cargar pedido"}
-            </button>
+      {/* Tabs */}
+      <div style={{display:"flex",gap:8}}>
+        {isAdmin&&<TabBtn active={tab==="nuevo"} onClick={()=>setTab("nuevo")}>+ Nuevo pedido</TabBtn>}
+        <TabBtn active={tab==="historial"} onClick={()=>setTab("historial")}>📋 Historial</TabBtn>
+        <TabBtn active={tab==="analisis"} onClick={()=>setTab("analisis")} color={C.purple}>📊 Análisis</TabBtn>
+      </div>
+
+      {/* ── NUEVO PEDIDO ── */}
+      {tab==="nuevo"&&isAdmin&&(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+
+          {/* Panel izquierdo: buscador de productos */}
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+            <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.border}`,background:C.panel}}>
+              <div style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14,marginBottom:10}}>
+                Buscador de productos
+              </div>
+              <input
+                value={prodQ} onChange={e=>setProdQ(e.target.value)}
+                placeholder="🔍  Buscar por nombre…"
+                style={{...inp,width:"100%",boxSizing:"border-box",fontSize:13,padding:"9px 12px"}}
+                autoFocus
+              />
+            </div>
+            <div style={{overflowY:"auto",maxHeight:420}}>
+              {stockFiltrado.length===0&&(
+                <div style={{padding:"24px",textAlign:"center",color:C.muted,fontFamily:"'DM Mono',monospace",fontSize:11}}>
+                  Sin resultados para "{prodQ}"
+                </div>
+              )}
+              {stockFiltrado.map(s=>{
+                const enForm = inFormItem(s.id);
+                const bajo   = s.stock<=s.minimo&&s.minimo>0;
+                return (
+                  <div key={s.id}
+                    style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",
+                      borderBottom:`1px solid ${C.border}16`,
+                      background:enForm?C.accent+"08":"transparent",
+                      transition:"background .12s"}}
+                    onMouseEnter={e=>{ if(!enForm) e.currentTarget.style.background=C.bg+"cc"; }}
+                    onMouseLeave={e=>{ if(!enForm) e.currentTarget.style.background="transparent"; }}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:600,fontSize:12,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.producto}</div>
+                      <div style={{display:"flex",gap:6,marginTop:3,alignItems:"center"}}>
+                        <Badge color={s.deposito===1?C.blue:C.green}>{s.deposito===1?"M.Acosta":"Cruz"}</Badge>
+                        <span style={{...dm,fontSize:10,color:bajo?C.red:C.muted}}>{s.stock} {s.unidad||"u"}</span>
+                        {bajo&&<Badge color={C.red}>⚠</Badge>}
+                        {enForm&&<Badge color={C.accent}>✓ {enForm.cantidad} agregados</Badge>}
+                      </div>
+                    </div>
+                    <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+                      <input
+                        type="number" min="1" max={s.stock}
+                        value={cantItem(s.id)}
+                        onChange={e=>setItemCant(v=>({...v,[s.id]:e.target.value}))}
+                        style={{...inp,width:52,padding:"4px 6px",fontSize:12,textAlign:"center"}}
+                      />
+                      <button
+                        onClick={()=>addItem(s, cantItem(s.id))}
+                        style={{background:enForm?C.accent:C.green,border:"none",borderRadius:6,
+                          padding:"5px 10px",color:"#000",cursor:"pointer",fontSize:11,
+                          fontFamily:"'Syne',sans-serif",fontWeight:700,whiteSpace:"nowrap"}}>
+                        {enForm?"+":"Agregar"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          {showForm&&(
-            <div style={{padding:"16px",display:"flex",flexDirection:"column",gap:14,background:C.bg}}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+
+          {/* Panel derecho: resumen del pedido */}
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            {/* Datos del pedido */}
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"16px",display:"flex",flexDirection:"column",gap:12}}>
+              <div style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14}}>Datos del pedido</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 <div>
-                  <div style={{color:C.textSub,fontSize:9,fontFamily:"'DM Mono',monospace",marginBottom:3,textTransform:"uppercase",letterSpacing:1}}>Tipo</div>
+                  <div style={{color:C.textSub,fontSize:9,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Tipo</div>
                   <select style={{...inp,width:"100%"}} value={form.tipo}
                     onChange={e=>setForm(f=>({...f,tipo:e.target.value,destino:e.target.value==="local"?"LITO'S":"",clienteNombre:""}))}>
                     <option value="local">Local propio</option>
                     <option value="cliente">Cliente externo</option>
                   </select>
                 </div>
-                {form.tipo==="local"
-                  ? <div>
-                      <div style={{color:C.textSub,fontSize:9,fontFamily:"'DM Mono',monospace",marginBottom:3,textTransform:"uppercase",letterSpacing:1}}>Local</div>
-                      <select style={{...inp,width:"100%"}} value={form.destino}
+                <div>
+                  <div style={{color:C.textSub,fontSize:9,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>
+                    {form.tipo==="local"?"Local destino":"Nombre del cliente"}
+                  </div>
+                  {form.tipo==="local"
+                    ? <select style={{...inp,width:"100%"}} value={form.destino}
                         onChange={e=>setForm(f=>({...f,destino:e.target.value}))}>
                         {LOCALES_OPT.map(l=><option key={l}>{l}</option>)}
                       </select>
-                    </div>
-                  : <div>
-                      <div style={{color:C.textSub,fontSize:9,fontFamily:"'DM Mono',monospace",marginBottom:3,textTransform:"uppercase",letterSpacing:1}}>Nombre del cliente</div>
-                      <input style={{...inp,width:"100%"}} value={form.clienteNombre}
+                    : <input style={{...inp,width:"100%"}} value={form.clienteNombre}
                         placeholder="Ej: Restaurante El Sur…"
-                        onChange={e=>setForm(f=>({...f,clienteNombre:e.target.value}))}/>
-                    </div>}
-                <div>
-                  <div style={{color:C.textSub,fontSize:9,fontFamily:"'DM Mono',monospace",marginBottom:3,textTransform:"uppercase",letterSpacing:1}}>Fecha</div>
+                        onChange={e=>setForm(f=>({...f,clienteNombre:e.target.value}))}/>}
+                </div>
+                <div style={{gridColumn:"1/-1"}}>
+                  <div style={{color:C.textSub,fontSize:9,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Fecha</div>
                   <input type="date" style={{...inp,width:"100%"}} value={form.fecha}
                     onChange={e=>setForm(f=>({...f,fecha:e.target.value}))}/>
                 </div>
               </div>
+            </div>
 
-              <div style={{border:`1px solid ${C.border}`,borderRadius:7,overflow:"hidden"}}>
-                <div style={{padding:"10px 14px",background:C.panel,display:"flex",gap:8,alignItems:"flex-end",flexWrap:"wrap"}}>
-                  <div style={{flex:2,minWidth:160}}>
-                    <div style={{color:C.textSub,fontSize:9,fontFamily:"'DM Mono',monospace",marginBottom:3}}>PRODUCTO</div>
-                    <select style={{...inp,width:"100%"}} value={itemForm.stockId}
-                      onChange={e=>setItemForm(f=>({...f,stockId:e.target.value}))}>
-                      <option value="">— elegí un producto —</option>
-                      {stock.map(s=><option key={s.id} value={s.id}>
-                        {s.producto} ({s.deposito===1?"M.Acosta":"Cruz"}) — stock: {s.stock} {s.unidad||"u"}
-                      </option>)}
-                    </select>
+            {/* Items del pedido */}
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",flex:1}}>
+              <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14}}>
+                  Productos seleccionados
+                </span>
+                <Badge color={form.items.length>0?C.accent:C.muted}>
+                  {form.items.length} producto{form.items.length!==1?"s":""}
+                </Badge>
+              </div>
+              {form.items.length===0
+                ? <div style={{padding:"28px 16px",textAlign:"center",color:C.muted,fontFamily:"'DM Mono',monospace",fontSize:11}}>
+                    Buscá y agregá productos desde el panel izquierdo
                   </div>
-                  <div style={{width:90}}>
-                    <div style={{color:C.textSub,fontSize:9,fontFamily:"'DM Mono',monospace",marginBottom:3}}>CANTIDAD</div>
-                    <input type="number" min="1" style={{...inp,width:"100%"}} value={itemForm.cantidad}
-                      onChange={e=>setItemForm(f=>({...f,cantidad:e.target.value}))}/>
-                  </div>
-                  <SmBtn onClick={addItem}>+ Agregar</SmBtn>
-                </div>
-                {form.items.length>0&&(
-                  <table style={{width:"100%",borderCollapse:"collapse"}}>
-                    <thead><tr><Th>Producto</Th><Th>Cantidad</Th><Th>Stock</Th><Th></Th></tr></thead>
-                    <tbody>
+                : <>
+                    <div style={{maxHeight:220,overflowY:"auto"}}>
                       {form.items.map((it,i)=>{
                         const prod = stock.find(s=>s.id===it.stockId);
+                        const ok   = prod&&prod.stock>=it.cantidad;
                         return (
-                          <tr key={i} {...rh}>
-                            <Td><strong>{it.producto}</strong></Td>
-                            <Td style={{fontFamily:"'DM Mono',monospace",color:C.accent,fontWeight:700}}>{it.cantidad} {it.unidad}</Td>
-                            <Td><Badge color={prod&&prod.stock>=it.cantidad?C.green:C.red}>{prod?`${prod.stock} ${prod.unidad||"u"}`:"?"}</Badge></Td>
-                            <Td><button onClick={()=>setForm(f=>({...f,items:f.items.filter((_,j)=>j!==i)}))}
-                              style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:13,opacity:.6}}>×</button></Td>
-                          </tr>
+                          <div key={i} style={{display:"flex",alignItems:"center",gap:10,
+                            padding:"8px 14px",borderBottom:`1px solid ${C.border}16`}}>
+                            <div style={{flex:1}}>
+                              <div style={{fontWeight:600,fontSize:12}}>{it.producto}</div>
+                              <div style={{...dm,fontSize:11,color:C.accent,fontWeight:700}}>{it.cantidad} {it.unidad}</div>
+                            </div>
+                            <Badge color={ok?C.green:C.red}>{prod?`stock: ${prod.stock}`:"sin stock"}</Badge>
+                            <button onClick={()=>removeItem(it.stockId)}
+                              style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:16,opacity:.6}}>×</button>
+                          </div>
                         );
                       })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-
-              {form.items.length>0&&(
-                <div style={{display:"flex",justifyContent:"flex-end",gap:10,alignItems:"center"}}>
-                  <span style={{color:C.textSub,fontSize:11,fontFamily:"'DM Mono',monospace"}}>
-                    {form.items.length} producto{form.items.length>1?"s":""} · {form.tipo==="cliente"?form.clienteNombre||"Cliente externo":form.destino}
-                  </span>
-                  <button onClick={confirmar} style={{background:C.green,color:"#000",border:"none",
-                    borderRadius:7,padding:"9px 22px",fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:13,cursor:"pointer"}}>
-                    ✓ Confirmar y descontar del stock
-                  </button>
-                </div>
-              )}
+                    </div>
+                    <div style={{padding:"14px 16px",borderTop:`1px solid ${C.border}`}}>
+                      <button onClick={confirmar}
+                        style={{width:"100%",background:C.green,color:"#000",border:"none",borderRadius:8,
+                          padding:"12px",fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:14,cursor:"pointer",
+                          letterSpacing:.3}}>
+                        ✓ Confirmar pedido y descontar stock
+                      </button>
+                    </div>
+                  </>}
             </div>
-          )}
+          </div>
         </div>
       )}
 
-      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14}}>Historial de Pedidos</span>
-            <Saved show={saved}/>
+      {/* ── HISTORIAL ── */}
+      {tab==="historial"&&(
+        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 16px",borderBottom:`1px solid ${C.border}`}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14}}>Historial de Pedidos</span>
+              <Saved show={saved}/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <PDFBtn onClick={()=>exportPDF("Historial de Pedidos",filtrado.map(p=>({
+                fecha:p.fecha,hora:p.hora,destino:p.nombreMostrar||p.destino,
+                tipo:p.tipo==="local"?"Local":"Cliente ext.",
+                productos:p.items.map(i=>`${i.producto} x${i.cantidad}`).join(", ")})),
+                [{key:"fecha",label:"Fecha"},{key:"hora",label:"Hora"},{key:"destino",label:"Destino"},
+                 {key:"tipo",label:"Tipo"},{key:"productos",label:"Productos"}])}/>
+              <input value={search} onChange={e=>setSearch(e.target.value)}
+                placeholder="🔍  Buscar…"
+                style={{...inp,width:180,padding:"5px 10px",fontSize:12}}/>
+            </div>
           </div>
-          <div style={{display:"flex",gap:8}}>
-            <PDFBtn onClick={()=>exportPDF("Historial de Pedidos",filtrado.map(p=>({
-              fecha:p.fecha,hora:p.hora,destino:p.nombreMostrar||p.destino,
-              tipo:p.tipo==="local"?"Local":"Cliente ext.",
-              productos:p.items.map(i=>`${i.producto} x${i.cantidad}`).join(", ")})),
-              [{key:"fecha",label:"Fecha"},{key:"hora",label:"Hora"},{key:"destino",label:"Destino"},
-               {key:"tipo",label:"Tipo"},{key:"productos",label:"Productos"}])}/>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar…"
-              style={{...inp,width:150,padding:"4px 9px"}}/>
+          {filtrado.length===0
+            ? <div style={{padding:"40px",textAlign:"center",color:C.muted,fontFamily:"'DM Mono',monospace",fontSize:11}}>
+                {isAdmin?"Sin pedidos. Usá la pestaña \"+ Nuevo pedido\".":"Sin pedidos registrados."}
+              </div>
+            : <div style={{maxHeight:500,overflowY:"auto"}}>
+                {filtrado.map(p=>(
+                  <div key={p.id}
+                    style={{borderBottom:`1px solid ${C.border}`,padding:"12px 16px",transition:"background .12s"}}
+                    onMouseEnter={e=>e.currentTarget.style.background=C.bg+"88"}
+                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <strong style={{color:C.text,fontSize:13}}>{p.nombreMostrar||p.destino}</strong>
+                        <Badge color={p.tipo==="local"?C.blue:C.orange}>{p.tipo==="local"?"Local":"Cliente ext."}</Badge>
+                        <span style={{...dm,fontSize:10,color:C.muted}}>{p.fecha} · {p.hora}</span>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <Badge color={C.green}>{p.items.reduce((a,i)=>a+i.cantidad,0)} u. totales</Badge>
+                        {isAdmin&&<button onClick={()=>saveP(pedidos.filter(x=>x.id!==p.id))}
+                          style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:14,opacity:.5}}>×</button>}
+                      </div>
+                    </div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                      {p.items.map((it,i)=>(
+                        <span key={i} style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:5,
+                          padding:"3px 10px",fontSize:11,...dm,color:C.text}}>
+                          {it.producto} <span style={{color:C.accent,fontWeight:700}}>{it.cantidad} {it.unidad}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>}
+        </div>
+      )}
+
+      {/* ── ANÁLISIS ── */}
+      {tab==="analisis"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+
+          {/* Por local */}
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+            <div style={{padding:"13px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14}}>Consumo por Local</span>
+              <PDFBtn onClick={()=>exportPDF("Análisis por Local",
+                analisisLocales.map(a=>({local:a.local,pedidos:a.pedidos.toString(),unidades:a.unidades.toString(),
+                  top:a.topProd.map(([p,u])=>`${p} (${u}u)`).join(", ")||"—"})),
+                [{key:"local",label:"Local"},{key:"pedidos",label:"Pedidos"},{key:"unidades",label:"Unidades"},{key:"top",label:"Top productos"}])}/>
+            </div>
+            {pedidos.filter(p=>p.tipo==="local").length===0
+              ? <div style={{padding:"30px",textAlign:"center",color:C.muted,fontFamily:"'DM Mono',monospace",fontSize:11}}>Sin pedidos de locales aún.</div>
+              : <>
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",minWidth:600}}>
+                      <thead><tr>
+                        <Th>Local</Th><Th>Pedidos</Th><Th>Unidades totales</Th><Th>Top 3 productos</Th>
+                      </tr></thead>
+                      <tbody>
+                        {analisisLocales.filter(a=>a.pedidos>0).map((a,i)=>(
+                          <tr key={a.local} {...rh}>
+                            <Td>
+                              <span style={{display:"flex",alignItems:"center",gap:8}}>
+                                <span style={{width:10,height:10,borderRadius:"50%",background:COLORS[i%COLORS.length],display:"inline-block"}}/>
+                                <strong>{a.local}</strong>
+                              </span>
+                            </Td>
+                            <Td style={{...dm,color:C.blue,fontWeight:700}}>{a.pedidos}</Td>
+                            <Td style={{...dm,color:C.green,fontWeight:700}}>{a.unidades} u.</Td>
+                            <Td>
+                              <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                                {a.topProd.map(([prod,u],j)=>(
+                                  <span key={j} style={{background:C.bg,border:`1px solid ${C.border}`,
+                                    borderRadius:4,padding:"2px 8px",fontSize:10,...dm,color:C.text}}>
+                                    {prod.split(" ").slice(0,2).join(" ")} <span style={{color:C.accent,fontWeight:700}}>{u}u</span>
+                                  </span>
+                                ))}
+                                {a.topProd.length===0&&<span style={{color:C.muted,fontSize:11}}>—</span>}
+                              </div>
+                            </Td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{padding:"14px 16px",borderTop:`1px solid ${C.border}`}}>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={analisisLocales.filter(a=>a.pedidos>0).map(a=>({name:a.local,unidades:a.unidades}))}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={C.border}/>
+                        <XAxis dataKey="name" tick={{fill:C.textSub,fontSize:10}} axisLine={false} tickLine={false}/>
+                        <YAxis tick={{fill:C.textSub,fontSize:9}} axisLine={false} tickLine={false}/>
+                        <Tooltip contentStyle={{background:C.card,border:`1px solid ${C.border}`,borderRadius:6}} formatter={v=>[v+" u.","Unidades"]}/>
+                        <Bar dataKey="unidades" name="Unidades" radius={[4,4,0,0]}>
+                          {analisisLocales.filter(a=>a.pedidos>0).map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </>}
+          </div>
+
+          {/* Por cliente externo */}
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+            <div style={{padding:"13px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14}}>Consumo por Cliente Externo</span>
+              <PDFBtn onClick={()=>exportPDF("Análisis Clientes Externos",
+                analisisClientes.map(a=>({nombre:a.nombre,pedidos:a.pedidos.toString(),unidades:a.unidades.toString(),
+                  ultimo:a.ultimo,top:a.topProd.map(([p,u])=>`${p} (${u}u)`).join(", ")||"—"})),
+                [{key:"nombre",label:"Cliente"},{key:"pedidos",label:"Pedidos"},{key:"unidades",label:"Unidades"},
+                 {key:"ultimo",label:"Último pedido"},{key:"top",label:"Top productos"}])}/>
+            </div>
+            {analisisClientes.length===0
+              ? <div style={{padding:"30px",textAlign:"center",color:C.muted,fontFamily:"'DM Mono',monospace",fontSize:11}}>
+                  Sin clientes externos registrados aún. Cargá pedidos de tipo "Cliente externo".
+                </div>
+              : <>
+                  <table style={{width:"100%",borderCollapse:"collapse"}}>
+                    <thead><tr>
+                      <Th>Cliente</Th><Th>Pedidos</Th><Th>Unidades</Th><Th>Último pedido</Th><Th>Top productos</Th>
+                    </tr></thead>
+                    <tbody>
+                      {analisisClientes.map((a,i)=>(
+                        <tr key={a.nombre} {...rh}>
+                          <Td>
+                            <span style={{display:"flex",alignItems:"center",gap:8}}>
+                              <span style={{width:10,height:10,borderRadius:"50%",background:COLORS[i%COLORS.length],display:"inline-block"}}/>
+                              <strong>{a.nombre}</strong>
+                            </span>
+                          </Td>
+                          <Td style={{...dm,color:C.blue,fontWeight:700}}>{a.pedidos}</Td>
+                          <Td style={{...dm,color:C.orange,fontWeight:700}}>{a.unidades} u.</Td>
+                          <Td style={{...dm,fontSize:11,color:C.muted}}>{a.ultimo}</Td>
+                          <Td>
+                            <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                              {a.topProd.map(([prod,u],j)=>(
+                                <span key={j} style={{background:C.bg,border:`1px solid ${C.border}`,
+                                  borderRadius:4,padding:"2px 8px",fontSize:10,...dm,color:C.text}}>
+                                  {prod.split(" ").slice(0,2).join(" ")} <span style={{color:C.accent,fontWeight:700}}>{u}u</span>
+                                </span>
+                              ))}
+                            </div>
+                          </Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>}
           </div>
         </div>
-        {filtrado.length===0
-          ? <div style={{padding:"36px",textAlign:"center",color:C.muted,fontFamily:"'DM Mono',monospace",fontSize:11}}>
-              {isAdmin?"Sin pedidos aún. Usá \"+ Cargar pedido\" para registrar el primero.":"Sin pedidos registrados."}
-            </div>
-          : <div style={{maxHeight:480,overflowY:"auto"}}>
-              {filtrado.map(p=>(
-                <div key={p.id} style={{borderBottom:`1px solid ${C.border}`,padding:"12px 16px",transition:"background .12s"}}
-                  onMouseEnter={e=>e.currentTarget.style.background=C.bg+"88"}
-                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                    <div style={{display:"flex",alignItems:"center",gap:10}}>
-                      <strong style={{color:C.text,fontSize:13}}>{p.nombreMostrar||p.destino}</strong>
-                      <Badge color={p.tipo==="local"?C.blue:C.orange}>{p.tipo==="local"?"Local":"Cliente ext."}</Badge>
-                      <span style={{color:C.muted,fontSize:10,fontFamily:"'DM Mono',monospace"}}>{p.fecha} · {p.hora}</span>
-                    </div>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <Badge color={C.green}>{p.items.length} prod.</Badge>
-                      {isAdmin&&<button onClick={()=>saveP(pedidos.filter(x=>x.id!==p.id))}
-                        style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:13,opacity:.5}}>×</button>}
-                    </div>
-                  </div>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                    {p.items.map((it,i)=>(
-                      <span key={i} style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:5,
-                        padding:"3px 10px",fontSize:11,fontFamily:"'DM Mono',monospace",color:C.text}}>
-                        {it.producto} <span style={{color:C.accent,fontWeight:700}}>{it.cantidad} {it.unidad}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>}
-      </div>
+      )}
     </div>
   );
 }
+
 
 // ── COSTOS ────────────────────────────────────────────────────
 function ModuloCostos({isAdmin}) {
@@ -741,6 +974,12 @@ function ModuloCostos({isAdmin}) {
   const [showNuevoE, setShowNuevoE] = useState(false);
   const [newP, setNewP] = useState({producto:"",compra:"0",gastos:"0",pvLocal:"0",pvMayorista:"0",costo_muerto:false});
   const [newE, setNewE] = useState({producto:"",proveedor:"",compra:"0",cantidad:"",frecuencia:"semanal"});
+  const [preciosCliente, setPreciosCliente] = useSaved("parrillas-precios-cliente", []);
+  const [savedPC, setSavedPC] = useState(false);
+  const [showPC,  setShowPC]  = useState(false);
+  const [newPC,   setNewPC]   = useState({productoId:"",precio:"",cliente:"",notas:""});
+  const savePC = next => { setPreciosCliente(next); setSavedPC(true); setTimeout(()=>setSavedPC(false),2000); };
+
 
   const saveP = next => { setProductos(next); setSavedP(true); setTimeout(()=>setSavedP(false),2000); };
   const saveE = next => { setExternas(next);  setSavedE(true); setTimeout(()=>setSavedE(false),2000); };
@@ -899,6 +1138,7 @@ function ModuloCostos({isAdmin}) {
         <TabBtn active={tab==="productos"} onClick={()=>setTab("productos")}>Productos propios</TabBtn>
         <TabBtn active={tab==="externas"} onClick={()=>setTab("externas")} color={C.purple}>Compras externas</TabBtn>
         <TabBtn active={tab==="resumen"} onClick={()=>setTab("resumen")} color={C.blue}>Resumen</TabBtn>
+        <TabBtn active={tab==="precios"} onClick={()=>setTab("precios")} color={C.orange}>💰 Precios por cliente</TabBtn>
       </div>
 
       {tab==="productos"&&(
@@ -1447,8 +1687,9 @@ function Login({onLogin}) {
 
   return (
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Syne',sans-serif"}}>
-      <div style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:12,
-        padding:"48px 44px",width:340,display:"flex",flexDirection:"column",gap:24}}>
+      <div style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:16,
+        padding:"48px 44px",width:360,display:"flex",flexDirection:"column",gap:24,
+        boxShadow:"0 24px 60px rgba(0,0,0,.5)"}}>
         <div style={{textAlign:"center"}}>
           <div style={{fontSize:36,marginBottom:8}}>🔥</div>
           <div style={{color:C.accent,fontWeight:800,fontSize:22,letterSpacing:-0.5}}>PARRILLAS</div>
@@ -1471,9 +1712,12 @@ function Login({onLogin}) {
           </div>
           {error&&<div style={{color:C.red,fontSize:11,fontFamily:"'DM Mono',monospace"}}>✕ Contraseña incorrecta</div>}
         </div>
-        <button onClick={intentar} style={{background:C.accent,color:C.bg,border:"none",borderRadius:8,
-          padding:"13px",fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:14,cursor:"pointer"}}>
-          Ingresar
+        <button onClick={intentar} style={{background:C.accent,color:C.bg,border:"none",borderRadius:10,
+          padding:"14px",fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:14,cursor:"pointer",
+          boxShadow:`0 4px 20px ${C.accent}40`,letterSpacing:.3,transition:"all .2s"}}
+          onMouseEnter={e=>e.currentTarget.style.transform="translateY(-1px)"}
+          onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
+          Ingresar →
         </button>
         <div style={{borderTop:`1px solid ${C.border}`,paddingTop:16,display:"flex",flexDirection:"column",gap:8}}>
           {[["ADMIN",C.accent,"Acceso total · puede editar todo"],["LECTOR",C.blue,"Solo lectura · no puede modificar"]].map(([r,c,d])=>(
@@ -1511,22 +1755,28 @@ export default function App() {
     <div style={{display:"flex",minHeight:"100vh",background:C.bg,fontFamily:"'Syne',sans-serif",color:C.text}}>
       <div style={{width:200,background:C.panel,borderRight:`1px solid ${C.border}`,
         display:"flex",flexDirection:"column",flexShrink:0,position:"sticky",top:0,height:"100vh"}}>
-        <div style={{padding:"20px 16px 16px",borderBottom:`1px solid ${C.border}`}}>
-          <div style={{color:C.accent,fontWeight:800,fontSize:16,letterSpacing:-0.5}}>PARRILLAS</div>
-          <div style={{color:C.muted,fontSize:9,fontFamily:"'DM Mono',monospace",marginTop:1}}>sistema de gestión</div>
+        <div style={{padding:"22px 18px 18px",borderBottom:`1px solid ${C.border}`,
+          background:`linear-gradient(135deg, ${C.panel} 0%, ${C.card} 100%)`}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+            <span style={{fontSize:22}}>🔥</span>
+            <div>
+              <div style={{color:C.accent,fontWeight:800,fontSize:15,letterSpacing:-0.5}}>PARRILLAS</div>
+              <div style={{color:C.muted,fontSize:9,fontFamily:"'DM Mono',monospace"}}>costanera sur</div>
+            </div>
+          </div>
         </div>
         <nav style={{flex:1,padding:"8px 6px",display:"flex",flexDirection:"column",gap:2,overflowY:"auto"}}>
           {MODS.map(m=>(
             <button key={m.id} onClick={()=>setMod(m.id)}
-              style={{display:"flex",alignItems:"center",gap:9,padding:"8px 9px",borderRadius:6,border:"none",
+              style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,border:"none",
                 cursor:"pointer",textAlign:"left",width:"100%",
-                background:mod===m.id?C.accent+"18":"transparent",
-                borderLeft:mod===m.id?`3px solid ${C.accent}`:"3px solid transparent",
-                transition:"all .12s"}}>
-              <span style={{fontSize:16}}>{m.icon}</span>
+                background:mod===m.id?C.accent+"15":"transparent",
+                boxShadow:mod===m.id?`inset 0 0 0 1px ${C.accent}33`:"none",
+                transition:"all .15s"}}>
+              <span style={{fontSize:18,filter:mod===m.id?"none":"grayscale(.4)"}}>{m.icon}</span>
               <div>
-                <div style={{color:mod===m.id?C.accent:C.text,fontSize:12,fontWeight:mod===m.id?700:500}}>{m.label}</div>
-                <div style={{color:C.muted,fontSize:9,fontFamily:"'DM Mono',monospace"}}>{m.desc}</div>
+                <div style={{color:mod===m.id?C.accent:C.text,fontSize:12,fontWeight:mod===m.id?700:400,letterSpacing:mod===m.id?-.3:0}}>{m.label}</div>
+                <div style={{color:C.muted,fontSize:9,fontFamily:"'DM Mono',monospace",marginTop:1}}>{m.desc}</div>
               </div>
             </button>
           ))}
@@ -1550,12 +1800,15 @@ export default function App() {
       </div>
 
       <div style={{flex:1,overflow:"auto"}}>
-        <div style={{padding:"20px 26px",borderBottom:`1px solid ${C.border}`,background:C.panel,position:"sticky",top:0,zIndex:10}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontSize:20}}>{actual.icon}</span>
+        <div style={{padding:"18px 28px",borderBottom:`1px solid ${C.border}`,background:C.panel,position:"sticky",top:0,zIndex:10,
+          boxShadow:"0 1px 0 "+C.border}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <div style={{width:40,height:40,borderRadius:10,background:C.accent+"18",
+              display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,
+              border:`1px solid ${C.accent}22`}}>{actual.icon}</div>
             <div>
-              <h1 style={{margin:0,fontSize:19,fontWeight:800,letterSpacing:-0.5}}>{actual.label}</h1>
-              <p style={{margin:0,color:C.textSub,fontSize:10,fontFamily:"'DM Mono',monospace"}}>{actual.desc}</p>
+              <h1 style={{margin:0,fontSize:18,fontWeight:800,letterSpacing:-0.5,color:C.text}}>{actual.label}</h1>
+              <p style={{margin:0,color:C.textSub,fontSize:10,fontFamily:"'DM Mono',monospace",marginTop:1}}>{actual.desc}</p>
             </div>
             {!isAdmin&&(
               <span style={{marginLeft:"auto",background:C.blue+"15",color:C.blue,
