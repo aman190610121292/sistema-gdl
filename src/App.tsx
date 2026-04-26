@@ -205,9 +205,6 @@ const COMPRAS_EXT_INIT = [
 
 const LOCALES = ["LITO'S","FARO","HOMERO","DON JOSÉ","GAUCHITO","AMPARITO"];
 const LKEYS   = ["LITOS","FARO","HOMERO","DONJOSE","GAUCHITO","AMPARITO"];
-const VENTAS_INIT = ["Oct","Nov","Dic","Ene","Feb","Mar"].map(mes =>
-  ({mes,...Object.fromEntries(LKEYS.map(k=>[k,0]))})
-);
 
 const CAT_COL = {Congelados:"#60a5fa",Aderezos:"#e8c547",Gaseosas:"#4ade80",Papelería:"#a78bfa"};
 
