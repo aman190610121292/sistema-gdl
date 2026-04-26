@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell
@@ -24,14 +24,72 @@ const fmt = (n) => "$" + Math.round(n).toLocaleString("es-AR");
 const PASS_ADMIN  = "parrillas2026";
 const PASS_LECTOR = "user1";
 
-// ── PERSISTENCIA (localStorage con fallback) ──────────────────
+// ── CLOUD SYNC (JSONBin) + localStorage ──────────────────────
+const BIN_ID  = "69e5fa2636566621a8d110ba";
+const API_KEY = "$2a$10$JSXY/5XpnNHMvGEKC6y91eBfTdHScfFpVAcU76FDjsjG8id.2Uu12";
+const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+
+// Datos en memoria (cache global)
+let _cloud = null;
+let _syncTimer = null;
+let _syncStatus = "idle"; // idle | saving | error
+
+// Listeners para notificar a la UI del estado de sync
+const _syncListeners = new Set();
+const notifySync = (s) => { _syncStatus=s; _syncListeners.forEach(fn=>fn(s)); };
+
+async function cloudRead() {
+  try {
+    const r = await fetch(BIN_URL+"/latest",{headers:{"X-Master-Key":API_KEY}});
+    if(!r.ok) throw new Error("read fail");
+    const d = await r.json();
+    return d.record||{};
+  } catch {
+    // Fallback a localStorage
+    const keys=["parrillas-emps","parrillas-stock","parrillas-pedidos","parrillas-costos",
+      "parrillas-externas","parrillas-precios-cliente","parrillas-proveedores",
+      "parrillas-ventas","parrillas-productos"];
+    const rec={};
+    keys.forEach(k=>{try{const v=localStorage.getItem(k);if(v)rec[k]=JSON.parse(v);}catch{}});
+    return rec;
+  }
+}
+
+async function cloudWrite(record) {
+  try {
+    notifySync("saving");
+    await fetch(BIN_URL,{method:"PUT",
+      headers:{"Content-Type":"application/json","X-Master-Key":API_KEY},
+      body:JSON.stringify(record)});
+    notifySync("idle");
+  } catch {
+    notifySync("error");
+    // Guardar en localStorage como fallback
+    Object.entries(record).forEach(([k,v])=>{
+      try{localStorage.setItem(k,JSON.stringify(v));}catch{}
+    });
+  }
+}
+
+function scheduleSync() {
+  if(_syncTimer) clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(()=>{ if(_cloud) cloudWrite(_cloud); },1500);
+}
+
 function load(key, def) {
-  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; }
+  // Primero cloud, luego localStorage
+  if(_cloud && _cloud[key]!==undefined) return _cloud[key];
+  try { const v=localStorage.getItem(key); return v?JSON.parse(v):def; }
   catch { return def; }
 }
+
 function persist(key, val) {
-  try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
+  if(!_cloud) _cloud={};
+  _cloud[key]=val;
+  try{localStorage.setItem(key,JSON.stringify(val));}catch{}
+  scheduleSync();
 }
+
 function useSaved(key, def) {
   const [v, setV] = useState(() => load(key, def));
   const set = useCallback((upd) => {
@@ -42,6 +100,13 @@ function useSaved(key, def) {
     });
   }, [key]);
   return [v, set];
+}
+
+// Hook para estado de sincronización
+function useSyncStatus() {
+  const [status, setStatus] = useState(_syncStatus);
+  useEffect(()=>{ _syncListeners.add(setStatus); return ()=>_syncListeners.delete(setStatus); },[]);
+  return status;
 }
 
 // ── DATOS INICIALES ───────────────────────────────────────────
@@ -416,11 +481,17 @@ const STOCK_FIELDS = [
 
 function ModuloStock({isAdmin}) {
   const [stock, setStock] = useSaved("parrillas-stock", STOCK_INIT);
-  const [saved, setSaved] = useState(false);
-  const [dep, setDep]     = useState(0);
-  const [cat, setCat]     = useState("Todas");
-  const [search, setSearch] = useState("");
-  const [modal, setModal]   = useState(null);
+  const [saved, setSaved]       = useState(false);
+  const [dep, setDep]           = useState(0);
+  const [cat, setCat]           = useState("Todas");
+  const [search, setSearch]     = useState("");
+  const [modal, setModal]       = useState(null);
+  const [showIngreso, setShowIngreso] = useState(false);
+  const [ingresoItems, setIngresoItems] = useState([]); // [{stockId, producto, unidad, cantidad}]
+  const [ingresoQ, setIngresoQ] = useState("");
+  const [ingresoFecha, setIngresoFecha] = useState(new Date().toISOString().slice(0,10));
+  const [ingresoObs, setIngresoObs]     = useState("");
+  const [ingresoSaved, setIngresoSaved] = useState(false);
 
   const doSave = next => { setStock(next); setSaved(true); setTimeout(()=>setSaved(false),2000); };
   const openNew  = () => setModal({mode:"new",  data:{producto:"",deposito:"1",categoria:"Congelados",stock:"0",minimo:"0",unidad:"u"}});
@@ -433,6 +504,30 @@ function ModuloStock({isAdmin}) {
     if(modal.mode==="new") doSave([...stock,{id:Date.now(),...row}]);
     else doSave(stock.map(s=>s.id===d.id?{...s,...row}:s));
     setModal(null);
+  };
+
+  // ── Ingreso de mercadería ────────────────────────────────────
+  const ingresoFiltrado = ingresoQ.trim()===""
+    ? stock
+    : stock.filter(s=>s.producto.toLowerCase().includes(ingresoQ.toLowerCase()));
+
+  const addIngreso = (prod, cant) => {
+    const c = Math.max(1,+(cant||1));
+    const existe = ingresoItems.find(i=>i.stockId===prod.id);
+    if(existe) setIngresoItems(items=>items.map(i=>i.stockId===prod.id?{...i,cantidad:i.cantidad+c}:i));
+    else setIngresoItems(items=>[...items,{stockId:prod.id,producto:prod.producto,unidad:prod.unidad||"u",cantidad:c}]);
+  };
+
+  const confirmarIngreso = () => {
+    if(!ingresoItems.length) return;
+    const newStock = stock.map(s=>{
+      const it = ingresoItems.find(i=>i.stockId===s.id);
+      return it ? {...s,stock:s.stock+it.cantidad} : s;
+    });
+    doSave(newStock);
+    setIngresoItems([]); setIngresoQ(""); setIngresoObs("");
+    setShowIngreso(false);
+    setIngresoSaved(true); setTimeout(()=>setIngresoSaved(false),3000);
   };
 
   const alertas  = stock.filter(s=>s.stock<=s.minimo&&s.minimo>0);
@@ -476,6 +571,14 @@ function ModuloStock({isAdmin}) {
               </TabBtn>
             ))}
           </div>
+          {isAdmin&&(
+            <button onClick={()=>setShowIngreso(!showIngreso)}
+              style={{background:showIngreso?"#dbeafe":C.green,color:"#fff",border:"none",
+                borderRadius:8,padding:"5px 14px",fontFamily:"'Inter',sans-serif",
+                fontWeight:600,fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+              📥 Ingresar mercadería
+            </button>
+          )}
           <PDFBtn onClick={()=>exportPDF("Control de Stock",filtrado.map(s=>({
             producto:s.producto,deposito:s.deposito===1?"M. Acosta":"Cruz",categoria:s.categoria,
             stock:s.stock,unidad:s.unidad||"u",minimo:s.minimo,
@@ -493,6 +596,111 @@ function ModuloStock({isAdmin}) {
             </div>
           )}
         </div>
+        {/* ── Panel de ingreso de mercadería ── */}
+        {isAdmin&&showIngreso&&(
+          <div style={{borderBottom:`1px solid ${C.border}`,background:"#f0fdf4"}}>
+            <div style={{padding:"14px 16px",borderBottom:"1px solid #bbf7d0",
+              display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:18}}>📥</span>
+              <div>
+                <div style={{fontWeight:700,fontSize:13,color:"#15803d"}}>Ingreso de Mercadería</div>
+                <div style={{fontSize:11,color:"#4ade80"}}>Buscá los productos que llegaron y cargá las cantidades</div>
+              </div>
+              <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
+                <div>
+                  <div style={{fontSize:9,color:"#15803d",marginBottom:3,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1}}>Fecha de ingreso</div>
+                  <input type="date" style={{...inp,padding:"5px 8px",fontSize:11}} value={ingresoFecha}
+                    onChange={e=>setIngresoFecha(e.target.value)}/>
+                </div>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:0}}>
+              {/* Buscador */}
+              <div style={{borderRight:`1px solid ${C.border}`}}>
+                <div style={{padding:"10px 14px",borderBottom:`1px solid ${C.border}`,background:"#f0fdf4"}}>
+                  <input value={ingresoQ} onChange={e=>setIngresoQ(e.target.value)}
+                    placeholder="🔍 Buscar producto…"
+                    style={{...inp,width:"100%",boxSizing:"border-box",background:"#fff"}}/>
+                </div>
+                <div style={{maxHeight:280,overflowY:"auto"}}>
+                  {ingresoFiltrado.map(s=>{
+                    const yaAgregado = ingresoItems.find(i=>i.stockId===s.id);
+                    return (
+                      <div key={s.id} style={{display:"flex",alignItems:"center",gap:8,
+                        padding:"8px 14px",borderBottom:"1px solid #dcfce7",
+                        background:yaAgregado?"#f0fdf4":"#fff",transition:"background .12s"}}
+                        onMouseEnter={e=>{if(!yaAgregado)e.currentTarget.style.background="#f9fafb";}}
+                        onMouseLeave={e=>{if(!yaAgregado)e.currentTarget.style.background=yaAgregado?"#f0fdf4":"#fff";}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontWeight:600,fontSize:12}}>{s.producto}</div>
+                          <div style={{fontSize:10,color:"#64748b"}}>
+                            Stock actual: <strong>{s.stock} {s.unidad||"u"}</strong> · {s.deposito===1?"M.Acosta":"Cruz"}
+                          </div>
+                        </div>
+                        {yaAgregado&&<Badge color={C.green}>+{yaAgregado.cantidad}</Badge>}
+                        <input type="number" min="1" defaultValue={1}
+                          id={`ing-${s.id}`}
+                          style={{...inp,width:52,padding:"3px 6px",fontSize:11,
+                            textAlign:"center",background:"#fff"}}/>
+                        <button onClick={()=>{
+                            const el=document.getElementById(`ing-${s.id}`);
+                            addIngreso(s,el?el.value:1);
+                          }}
+                          style={{background:C.green,border:"none",borderRadius:6,
+                            padding:"4px 10px",color:"#fff",cursor:"pointer",
+                            fontSize:11,fontFamily:"'Inter',sans-serif",fontWeight:600}}>
+                          {yaAgregado?"+":"Agregar"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* Resumen ingreso */}
+              <div style={{display:"flex",flexDirection:"column"}}>
+                <div style={{padding:"10px 14px",borderBottom:`1px solid ${C.border}`,background:"#f0fdf4",
+                  display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontWeight:600,fontSize:13,color:"#15803d"}}>Productos a ingresar</span>
+                  <Badge color={C.green}>{ingresoItems.length} ítems</Badge>
+                </div>
+                <div style={{flex:1,overflowY:"auto",maxHeight:230}}>
+                  {ingresoItems.length===0
+                    ? <div style={{padding:"24px",textAlign:"center",color:"#86efac",fontSize:12}}>
+                        Buscá y agregá los productos recibidos
+                      </div>
+                    : ingresoItems.map((it,i)=>(
+                        <div key={i} style={{display:"flex",alignItems:"center",gap:8,
+                          padding:"8px 14px",borderBottom:"1px solid #dcfce7"}}>
+                          <div style={{flex:1}}>
+                            <div style={{fontWeight:600,fontSize:12}}>{it.producto}</div>
+                          </div>
+                          <input type="number" min="1" value={it.cantidad}
+                            onChange={e=>setIngresoItems(items=>items.map((x,j)=>j===i?{...x,cantidad:Math.max(1,+e.target.value)}:x))}
+                            style={{...inp,width:60,padding:"3px 6px",fontSize:12,background:"#fff"}}/>
+                          <span style={{fontSize:11,color:"#64748b"}}>{it.unidad}</span>
+                          <button onClick={()=>setIngresoItems(items=>items.filter((_,j)=>j!==i))}
+                            style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:14}}>×</button>
+                        </div>
+                      ))}
+                </div>
+                <div style={{padding:"10px 14px",borderTop:`1px solid ${C.border}`}}>
+                  <input value={ingresoObs} onChange={e=>setIngresoObs(e.target.value)}
+                    placeholder="Observaciones (opcional)…"
+                    style={{...inp,width:"100%",boxSizing:"border-box",marginBottom:10,fontSize:12,background:"#fff"}}/>
+                  <button onClick={confirmarIngreso} disabled={ingresoItems.length===0}
+                    style={{width:"100%",background:ingresoItems.length>0?C.green:"#94a3b8",
+                      color:"#fff",border:"none",borderRadius:8,padding:"10px",
+                      fontFamily:"'Inter',sans-serif",fontWeight:700,fontSize:13,
+                      cursor:ingresoItems.length>0?"pointer":"not-allowed"}}>
+                    ✓ Confirmar ingreso de {ingresoItems.reduce((a,i)=>a+i.cantidad,0)} unidades
+                  </button>
+                  {ingresoSaved&&<div style={{color:C.green,fontSize:11,textAlign:"center",marginTop:6,fontFamily:"'DM Mono',monospace"}}>✓ Stock actualizado correctamente</div>}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div style={{maxHeight:500,overflowY:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse"}}>
             <thead style={{position:"sticky",top:0,background:C.card,zIndex:2}}>
@@ -1982,23 +2190,42 @@ function ModuloProveedores({isAdmin}) {
 }
 
 // ── VENTAS ────────────────────────────────────────────────────
-function ModuloVentas({isAdmin}) {
-  const [datos, setDatos]   = useSaved("parrillas-ventas", VENTAS_INIT);
-  const [pedidos]           = useSaved("parrillas-pedidos", []);
-  const [saved, setSaved]   = useState(false);
-  const [vista, setVista]   = useState("barras");
-  const [tab, setTab]       = useState("locales");
-  const [editCell, setEditCell] = useState(null);
-  const [editVal, setEditVal]   = useState("");
+// Los períodos se guardan dinámicamente — el admin puede agregar/archivar meses
 
-  const doSave = next => { setDatos(next); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+function ModuloVentas({isAdmin}) {
+  const [datos, setDatos] = useSaved("parrillas-ventas", VENTAS_INIT);
+  const [pedidos]         = useSaved("parrillas-pedidos", []);
+  const [saved,  setSaved]  = useState(false);
+  const [vista,  setVista]  = useState("barras");
+  const [tab,    setTab]    = useState("locales");
+  const [editCell, setEditCell] = useState(null);
+  const [editVal,  setEditVal]  = useState("");
+
+  // Gestión de períodos
+  const [showPeriodos, setShowPeriodos] = useState(false);
+  const MESES_OPT = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+
+  const doSave  = next => { setDatos(next); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+  const saveCell = (mi,k) => { doSave(datos.map((d,i)=>i===mi?{...d,[k]:+editVal}:d)); setEditCell(null); };
+
+  const agregarPeriodo = (mes) => {
+    if(datos.find(d=>d.mes===mes)) return;
+    doSave([...datos,{mes,...Object.fromEntries(LKEYS.map(k=>[k,0]))}]);
+  };
+
+  const eliminarPeriodo = (mes) => {
+    if(datos.length<=1) return;
+    doSave(datos.filter(d=>d.mes!==mes));
+  };
+
+  // Métricas locales
   const totLocal = k => datos.reduce((a,m)=>a+m[k],0);
   const totGen   = LKEYS.reduce((a,k)=>a+totLocal(k),0);
   const mejorIdx = LKEYS.reduce((bi,k,i,arr)=>totLocal(k)>totLocal(arr[bi])?i:bi,0);
-  const tieneData= totGen>0;
-  const saveCell = (mi,k) => { doSave(datos.map((d,i)=>i===mi?{...d,[k]:+editVal}:d)); setEditCell(null); };
+  const tieneData = totGen>0;
+  const nPeriodos = datos.length;
 
-  // Mayorista
+  // Mayorista: desde pedidos
   const pedExt = pedidos.filter(p=>p.tipo==="cliente");
   const cliMap  = {};
   pedExt.forEach(p=>{
@@ -2009,32 +2236,107 @@ function ModuloVentas({isAdmin}) {
   });
   const cliList = Object.values(cliMap).sort((a,b)=>b.unidades-a.unidades);
 
+  // Meses disponibles para agregar (no cargados aún)
+  const mesesDisponibles = MESES_OPT.filter(m=>!datos.find(d=>d.mes===m));
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      <div style={{display:"flex",gap:8}}>
-        <TabBtn active={tab==="locales"} onClick={()=>setTab("locales")}>🏪 Locales propios</TabBtn>
-        <TabBtn active={tab==="mayorista"} onClick={()=>setTab("mayorista")} color={C.orange}>🏭 Venta mayorista</TabBtn>
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:8,alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{display:"flex",gap:8}}>
+          <TabBtn active={tab==="locales"} onClick={()=>setTab("locales")}>🏪 Locales propios</TabBtn>
+          <TabBtn active={tab==="mayorista"} onClick={()=>setTab("mayorista")} color={C.orange}>🏭 Venta mayorista</TabBtn>
+        </div>
+        {isAdmin&&(
+          <button onClick={()=>setShowPeriodos(!showPeriodos)}
+            style={{background:showPeriodos?"#dbeafe":C.bg,color:showPeriodos?C.blue:C.textSub,
+              border:`1px solid ${showPeriodos?C.blue:C.border}`,borderRadius:8,
+              padding:"6px 14px",fontFamily:"'Inter',sans-serif",fontWeight:500,fontSize:12,cursor:"pointer"}}>
+            📅 Gestionar períodos
+          </button>
+        )}
       </div>
 
+      {/* Panel gestión de períodos */}
+      {isAdmin&&showPeriodos&&(
+        <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,padding:"16px"}}>
+          <div style={{fontWeight:700,fontSize:13,color:C.blue,marginBottom:12}}>Gestión de Períodos de Venta</div>
+          <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+            {/* Períodos activos */}
+            <div style={{flex:1,minWidth:240}}>
+              <div style={{fontSize:11,color:C.textSub,marginBottom:8,fontWeight:600}}>Períodos activos ({datos.length})</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {datos.map(d=>(
+                  <div key={d.mes} style={{display:"flex",alignItems:"center",gap:4,
+                    background:"#fff",border:"1px solid #bfdbfe",borderRadius:7,
+                    padding:"4px 10px",fontSize:12,fontWeight:600,color:C.blue}}>
+                    {d.mes}
+                    <button onClick={()=>eliminarPeriodo(d.mes)}
+                      style={{background:"transparent",border:"none",color:C.red,
+                        cursor:"pointer",fontSize:14,lineHeight:1,opacity:.6,padding:"0 2px"}}
+                      title="Archivar período">×</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Agregar período */}
+            <div style={{flex:1,minWidth:240}}>
+              <div style={{fontSize:11,color:C.textSub,marginBottom:8,fontWeight:600}}>Agregar período</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {mesesDisponibles.map(m=>(
+                  <button key={m} onClick={()=>agregarPeriodo(m)}
+                    style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:7,
+                      padding:"4px 12px",fontSize:12,color:C.textSub,cursor:"pointer",
+                      fontFamily:"'Inter',sans-serif",fontWeight:500,
+                      transition:"all .15s"}}
+                    onMouseEnter={e=>{e.currentTarget.style.background="#dbeafe";e.currentTarget.style.color=C.blue;e.currentTarget.style.borderColor=C.blue;}}
+                    onMouseLeave={e=>{e.currentTarget.style.background="#fff";e.currentTarget.style.color=C.textSub;e.currentTarget.style.borderColor="#e2e8f0";}}>
+                    + {m}
+                  </button>
+                ))}
+                {mesesDisponibles.length===0&&(
+                  <span style={{fontSize:11,color:C.muted}}>Todos los meses del año están activos</span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div style={{marginTop:12,padding:"10px 14px",background:"#fff",borderRadius:8,
+            fontSize:11,color:C.textSub,border:"1px solid #bfdbfe"}}>
+            💡 Los datos de cada período se conservan aunque lo archives. Podés volver a agregarlo en cualquier momento.
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB LOCALES ── */}
       {tab==="locales"&&(
         <>
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
-            <KPI label="Ventas totales 6M" value={tieneData?fmt(totGen):"Sin datos"} sub="Todos los locales"/>
+            <KPI label={`Ventas ${nPeriodos} períodos`} value={tieneData?fmt(totGen):"Sin datos"} sub="Suma todos los locales"/>
             <KPI label="Mejor local" value={tieneData?LOCALES[mejorIdx]:"—"} sub={tieneData?fmt(totLocal(LKEYS[mejorIdx])):"Cargá ventas"} color={C.green}/>
-            <KPI label="Promedio mensual" value={tieneData?fmt(totGen/6):"—"} sub="Por período" color={C.blue}/>
-            <KPI label="Locales" value="6" sub="Costanera Sur" color={C.purple}/>
+            <KPI label="Promedio mensual" value={tieneData&&nPeriodos>0?fmt(totGen/nPeriodos):"—"} sub="Por período" color={C.blue}/>
+            <KPI label="Períodos activos" value={nPeriodos.toString()} sub={datos.map(d=>d.mes).join(" · ")} color={C.purple}/>
           </div>
+
+          {/* Mini tarjetas por local */}
           <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:9}}>
             {LOCALES.map((l,i)=>(
-              <div key={l} style={{background:C.card,border:`1px solid ${C.border}`,borderTop:`3px solid ${COLORS[i]}`,borderRadius:7,padding:"11px"}}>
+              <div key={l} style={{background:C.card,border:`1px solid ${C.border}`,
+                borderTop:`3px solid ${COLORS[i]}`,borderRadius:7,padding:"11px",
+                boxShadow:C.shadow}}>
                 <div style={{color:C.textSub,fontSize:9,fontFamily:"'DM Mono',monospace",marginBottom:2}}>{l}</div>
-                <div style={{color:COLORS[i],fontSize:12,fontFamily:"'Syne',sans-serif",fontWeight:700}}>{tieneData?fmt(totLocal(LKEYS[i])):"—"}</div>
-                <div style={{color:C.muted,fontSize:9,marginTop:2}}>6 meses</div>
+                <div style={{color:COLORS[i],fontSize:13,fontFamily:"'Syne',sans-serif",fontWeight:700}}>
+                  {tieneData?fmt(totLocal(LKEYS[i])):"—"}
+                </div>
+                <div style={{color:C.muted,fontSize:9,marginTop:2}}>{nPeriodos} {nPeriodos===1?"mes":"meses"}</div>
               </div>
             ))}
           </div>
-          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
+
+          {/* Tabla y gráficos */}
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",boxShadow:C.shadow}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+              padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14}}>Ventas por Local</span>
                 {isAdmin&&<Saved show={saved}/>}
@@ -2052,9 +2354,10 @@ function ModuloVentas({isAdmin}) {
             <div style={{overflowX:"auto"}}>
               <table style={{width:"100%",borderCollapse:"collapse",minWidth:640}}>
                 <thead><tr>
-                  <Th>Mes</Th>
+                  <Th>Período</Th>
                   {LOCALES.map((l,i)=><Th key={l} style={{color:COLORS[i]}}>{l}</Th>)}
-                  <Th>Total mes</Th>
+                  <Th>Total</Th>
+                  {isAdmin&&<Th></Th>}
                 </tr></thead>
                 <tbody>
                   {datos.map((d,mi)=>{
@@ -2071,13 +2374,24 @@ function ModuloVentas({isAdmin}) {
                                   <SmBtn onClick={()=>saveCell(mi,k)}>✓</SmBtn>
                                 </span>
                               : <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,
-                                  color:d[k]===0?C.muted:COLORS[i],cursor:isAdmin?"pointer":"default"}}
+                                  color:d[k]===0?C.muted:COLORS[i],
+                                  cursor:isAdmin?"pointer":"default"}}
                                   onClick={()=>isAdmin&&(setEditCell([mi,k]),setEditVal(d[k]))}>
                                   {d[k]===0?(isAdmin?"— clic":"-"):fmt(d[k])}
                                 </span>}
                           </Td>
                         ))}
-                        <Td style={{fontFamily:"'DM Mono',monospace",fontWeight:700}}>{rowTotal===0?"—":fmt(rowTotal)}</Td>
+                        <Td style={{fontFamily:"'DM Mono',monospace",fontWeight:700}}>
+                          {rowTotal===0?"—":fmt(rowTotal)}
+                        </Td>
+                        {isAdmin&&(
+                          <Td>
+                            <button onClick={()=>eliminarPeriodo(d.mes)}
+                              style={{background:"transparent",border:"none",color:C.muted,
+                                cursor:"pointer",fontSize:11,opacity:.5}}
+                              title="Archivar período">×</button>
+                          </Td>
+                        )}
                       </tr>
                     );
                   })}
@@ -2087,7 +2401,7 @@ function ModuloVentas({isAdmin}) {
             <div style={{padding:"14px 16px",borderTop:`1px solid ${C.border}`}}>
               {!tieneData
                 ? <div style={{color:C.textSub,fontSize:11,fontFamily:"'DM Mono',monospace",textAlign:"center"}}>
-                    {isAdmin?"💡 Hacé clic en cualquier celda para cargar ventas.":"Sin datos cargados aún."}
+                    {isAdmin?"💡 Hacé clic en cualquier celda para cargar ventas. Usá \"Gestionar períodos\" para agregar meses.":"Sin datos cargados aún."}
                   </div>
                 : <ResponsiveContainer width="100%" height={260}>
                     {vista==="barras"
@@ -2122,6 +2436,7 @@ function ModuloVentas({isAdmin}) {
         </>
       )}
 
+      {/* ── TAB MAYORISTA ── */}
       {tab==="mayorista"&&(
         <>
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
@@ -2129,21 +2444,22 @@ function ModuloVentas({isAdmin}) {
             <KPI label="Pedidos externos" value={pedExt.length.toString()} sub="Total histórico" color={C.blue}/>
             <KPI label="Unidades despachadas" value={cliList.reduce((a,c)=>a+c.unidades,0).toString()} sub="A clientes externos" color={C.green}/>
           </div>
-          <div style={{background:C.accent+"10",border:`1px solid ${C.accent}30`,borderRadius:8,padding:"10px 14px",display:"flex",gap:10,alignItems:"center"}}>
+          <div style={{background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:8,
+            padding:"10px 14px",display:"flex",gap:10,alignItems:"center"}}>
             <span>💡</span>
             <span style={{color:C.textSub,fontSize:11}}>
-              Los clientes mayoristas se cargan en el módulo <strong style={{color:C.accent}}>Pedidos</strong> eligiendo tipo "Cliente externo".
-              Cada cliente puede tener su propio precio — registrá los pedidos allí para que aparezcan acá.
+              Los clientes mayoristas se cargan automáticamente desde <strong>Pedidos → Cliente externo</strong>.
+              Cada cliente puede tener su propio precio en <strong>Costos → Precios por cliente</strong>.
             </span>
           </div>
-          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",boxShadow:C.shadow}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
               <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14}}>Resumen por Cliente</span>
               <PDFBtn onClick={()=>exportPDF("Venta Mayorista",cliList.map(c=>({nombre:c.nombre,pedidos:c.pedidos.toString(),unidades:c.unidades.toString()})),
                 [{key:"nombre",label:"Cliente"},{key:"pedidos",label:"Pedidos"},{key:"unidades",label:"Unidades"}])}/>
             </div>
             {cliList.length===0
-              ? <div style={{padding:"36px",textAlign:"center",color:C.muted,fontFamily:"'DM Mono',monospace",fontSize:11}}>
+              ? <div style={{padding:"40px",textAlign:"center",color:C.muted,fontFamily:"'DM Mono',monospace",fontSize:11}}>
                   Sin clientes mayoristas aún.<br/>Cargá pedidos de tipo "Cliente externo" en el módulo Pedidos.
                 </div>
               : <>
@@ -2160,14 +2476,14 @@ function ModuloVentas({isAdmin}) {
                             </span></Td>
                             <Td style={{fontFamily:"'DM Mono',monospace",color:C.blue,fontWeight:700}}>{c.pedidos}</Td>
                             <Td style={{fontFamily:"'DM Mono',monospace",color:C.green,fontWeight:700}}>{c.unidades} u.</Td>
-                            <Td style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:C.textSub}}>{ult?.fecha||"—"}</Td>
+                            <Td style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:C.muted}}>{ult?.fecha||"—"}</Td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
                   <div style={{padding:"14px 16px",borderTop:`1px solid ${C.border}`}}>
-                    <ResponsiveContainer width="100%" height={220}>
+                    <ResponsiveContainer width="100%" height={200}>
                       <BarChart data={cliList} layout="vertical">
                         <CartesianGrid strokeDasharray="3 3" stroke={C.border}/>
                         <XAxis type="number" tick={{fill:C.textSub,fontSize:10}} axisLine={false} tickLine={false}/>
@@ -2186,6 +2502,7 @@ function ModuloVentas({isAdmin}) {
     </div>
   );
 }
+
 
 // ── LOGIN ─────────────────────────────────────────────────────
 function Login({onLogin}) {
@@ -2257,8 +2574,39 @@ const MODS = [
 ];
 
 export default function App() {
-  const [role, setRole]   = useState(null);
-  const [mod, setMod]     = useState("sueldos");
+  const [role,    setRole]   = useState(null);
+  const [mod,     setMod]    = useState("sueldos");
+  const [loading, setLoading]= useState(!_cloud);
+  const syncStatus = useSyncStatus();
+
+  useEffect(()=>{
+    if(_cloud) { setLoading(false); return; }
+    cloudRead().then(record=>{
+      _cloud = record;
+      Object.entries(record).forEach(([k,v])=>{
+        try{localStorage.setItem(k,JSON.stringify(v));}catch{}
+      });
+      setLoading(false);
+    }).catch(()=>{
+      _cloud = {};
+      setLoading(false);
+    });
+  },[]);
+
+  if(loading) return (
+    <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#fef3c7,#fff7ed)",
+      display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,
+      fontFamily:"'Inter',sans-serif"}}>
+      <div style={{fontSize:40}}>🔥</div>
+      <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:20,color:"#d97706"}}>PARRILLAS</div>
+      <div style={{display:"flex",alignItems:"center",gap:10,color:"#64748b",fontSize:13}}>
+        <div style={{width:18,height:18,border:"2px solid #e2e8f0",borderTop:"2px solid #d97706",
+          borderRadius:"50%",animation:"spin .8s linear infinite"}}/>
+        Sincronizando datos…
+      </div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
 
   if(!role) return <Login onLogin={setRole}/>;
 
@@ -2302,6 +2650,13 @@ export default function App() {
           ))}
         </nav>
         <div style={{padding:"12px 16px",borderTop:`1px solid ${C.border}`}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace"}}>
+            <div style={{width:6,height:6,borderRadius:"50%",flexShrink:0,
+              background:syncStatus==="saving"?C.orange:syncStatus==="error"?C.red:C.green,
+              animation:syncStatus==="saving"?"pulse .8s ease-in-out infinite":"none"}}/>
+            {syncStatus==="saving"?"guardando…":syncStatus==="error"?"error al sincronizar":"sincronizado"}
+          </div>
+          <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
             <span style={{background:isAdmin?C.accent+"22":C.blue+"22",
               color:isAdmin?C.accent:C.blue,border:`1px solid ${isAdmin?C.accent:C.blue}44`,
