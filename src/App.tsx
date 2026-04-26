@@ -21,8 +21,9 @@ const COLORS = ["#e8c547","#60a5fa","#4ade80","#f97316","#a78bfa","#f472b6"];
 const fmt = (n) => "$" + Math.round(n).toLocaleString("es-AR");
 
 // ── CONTRASEÑAS ───────────────────────────────────────────────
-const PASS_ADMIN  = "parrillas2026";
-const PASS_LECTOR = "user1";
+const PASS_ADMIN    = "parrillas2026";
+const PASS_OPERADOR = "ope2026";
+const PASS_LECTOR   = "user1";
 
 // ── CLOUD SYNC (JSONBin) + localStorage ──────────────────────
 const BIN_ID  = "69e5fa2636566621a8d110ba";
@@ -3117,6 +3118,26 @@ function ModuloVentas({isAdmin}) {
 }
 
 
+// ── ROLES ─────────────────────────────────────────────────────
+// admin    → ve y edita todo
+// operador → ve y edita todo EXCEPTO Sueldos y Costos (ocultos)
+// lector   → solo lectura, solo Stock y Pedidos
+
+const MODS_ALL = [
+  {id:"sueldos",     label:"Sueldos",     icon:"👥", desc:"15 empleados",       roles:["admin"]},
+  {id:"stock",       label:"Stock",       icon:"📦", desc:"M. Acosta · Cruz",   roles:["admin","operador","lector"]},
+  {id:"pedidos",     label:"Pedidos",     icon:"🛒", desc:"Despacho · clientes",roles:["admin","operador","lector"]},
+  {id:"costos",      label:"Costos",      icon:"💰", desc:"Márgenes · precios", roles:["admin"]},
+  {id:"proveedores", label:"Proveedores", icon:"🤝", desc:"Cuentas corrientes",  roles:["admin","operador"]},
+  {id:"ventas",      label:"Ventas",      icon:"📊", desc:"6 locales · costanera",roles:["admin","operador"]},
+];
+
+const ROLE_META = {
+  admin:    {label:"ADMIN",    color:"#d97706", desc:"Acceso total"},
+  operador: {label:"OPERADOR", color:"#16a34a", desc:"Operaciones"},
+  lector:   {label:"LECTOR",   color:"#2563eb", desc:"Solo lectura"},
+};
+
 // ── LOGIN ─────────────────────────────────────────────────────
 function Login({onLogin}) {
   const [pass, setPass]   = useState("");
@@ -3124,50 +3145,65 @@ function Login({onLogin}) {
   const [show, setShow]   = useState(false);
 
   const intentar = () => {
-    if(pass===PASS_ADMIN)  { onLogin("admin");  return; }
-    if(pass===PASS_LECTOR) { onLogin("lector"); return; }
+    if(pass===PASS_ADMIN)    { onLogin("admin");    return; }
+    if(pass===PASS_OPERADOR) { onLogin("operador"); return; }
+    if(pass===PASS_LECTOR)   { onLogin("lector");  return; }
     setError(true); setTimeout(()=>setError(false),2000);
   };
 
+  const ROLES_INFO = [
+    {label:"ADMIN",    color:"#d97706", desc:"Acceso total · todos los módulos"},
+    {label:"OPERADOR", color:"#16a34a", desc:"Operaciones · sin Sueldos ni Costos"},
+    {label:"LECTOR",   color:"#2563eb", desc:"Solo lectura · Stock y Pedidos"},
+  ];
+
   return (
-    <div style={{minHeight:"100vh",background:"linear-gradient(135deg, #fef3c7 0%, #fff7ed 50%, #fef9ee 100%)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',sans-serif"}}>
-      <div style={{background:"#ffffff",border:`1px solid ${C.border}`,borderRadius:16,
-        padding:"48px 44px",width:360,display:"flex",flexDirection:"column",gap:24,
+    <div style={{minHeight:"100vh",background:"linear-gradient(135deg, #fef3c7 0%, #fff7ed 50%, #fef9ee 100%)",
+      display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',sans-serif"}}>
+      <div style={{background:"#ffffff",border:"1px solid #e2e8f0",borderRadius:16,
+        padding:"48px 44px",width:380,display:"flex",flexDirection:"column",gap:24,
         boxShadow:"0 20px 60px rgba(0,0,0,.12)"}}>
         <div style={{textAlign:"center"}}>
           <div style={{fontSize:36,marginBottom:8}}>🔥</div>
-          <div style={{color:C.accent,fontWeight:800,fontSize:22,letterSpacing:-0.5}}>PARRILLAS</div>
-          <div style={{color:C.muted,fontSize:11,fontFamily:"'DM Mono',monospace",marginTop:3}}>sistema de gestión · costanera sur</div>
+          <div style={{color:"#d97706",fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:22,letterSpacing:-0.5}}>PARRILLAS</div>
+          <div style={{color:"#94a3b8",fontSize:11,fontFamily:"'DM Mono',monospace",marginTop:3}}>sistema de gestión · costanera sur</div>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          <label style={{color:C.textSub,fontSize:11,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1}}>Contraseña</label>
+          <label style={{color:"#64748b",fontSize:11,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:1}}>Contraseña</label>
           <div style={{position:"relative"}}>
             <input type={show?"text":"password"} value={pass}
               onChange={e=>setPass(e.target.value)}
               onKeyDown={e=>e.key==="Enter"&&intentar()}
               placeholder="Ingresá tu contraseña"
-              style={{width:"100%",background:C.bg,border:`1px solid ${error?C.red:C.border}`,
-                borderRadius:7,padding:"11px 40px 11px 14px",color:C.text,fontSize:13,
-                fontFamily:"'DM Mono',monospace",outline:"none",boxSizing:"border-box",transition:"border-color .2s"}}/>
-            <button onClick={()=>setShow(!show)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",
-              background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:14}}>
+              style={{width:"100%",background:"#f8fafc",
+                border:`1.5px solid ${error?"#dc2626":"#e2e8f0"}`,
+                borderRadius:9,padding:"12px 42px 12px 14px",color:"#1e293b",fontSize:13,
+                fontFamily:"'Inter',sans-serif",outline:"none",boxSizing:"border-box",transition:"border-color .2s"}}/>
+            <button onClick={()=>setShow(!show)} style={{position:"absolute",right:12,top:"50%",
+              transform:"translateY(-50%)",background:"transparent",border:"none",
+              color:"#94a3b8",cursor:"pointer",fontSize:15}}>
               {show?"🙈":"👁️"}
             </button>
           </div>
-          {error&&<div style={{color:C.red,fontSize:11,fontFamily:"'DM Mono',monospace"}}>✕ Contraseña incorrecta</div>}
+          {error&&<div style={{color:"#dc2626",fontSize:11,fontFamily:"'DM Mono',monospace"}}>✕ Contraseña incorrecta</div>}
         </div>
-        <button onClick={intentar} style={{background:C.accent,color:C.bg,border:"none",borderRadius:10,
-          padding:"14px",fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:14,cursor:"pointer",
-          boxShadow:`0 4px 20px ${C.accent}40`,letterSpacing:.3,transition:"all .2s"}}
+        <button onClick={intentar}
+          style={{background:"#d97706",color:"#fff",border:"none",borderRadius:10,
+            padding:"14px",fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:14,cursor:"pointer",
+            boxShadow:"0 4px 20px rgba(217,119,6,.35)",letterSpacing:.3,transition:"all .2s"}}
           onMouseEnter={e=>e.currentTarget.style.transform="translateY(-1px)"}
           onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
           Ingresar →
         </button>
-        <div style={{borderTop:`1px solid ${C.border}`,paddingTop:16,display:"flex",flexDirection:"column",gap:8}}>
-          {[["ADMIN",C.accent,"Acceso total · puede editar todo"],["LECTOR",C.blue,"Solo lectura · no puede modificar"]].map(([r,c,d])=>(
-            <div key={r} style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{background:c+"22",color:c,border:`1px solid ${c}44`,padding:"2px 8px",borderRadius:4,fontSize:10,fontFamily:"'DM Mono',monospace",fontWeight:600}}>{r}</span>
-              <span style={{color:C.textSub,fontSize:11}}>{d}</span>
+        <div style={{borderTop:"1px solid #e2e8f0",paddingTop:16,display:"flex",flexDirection:"column",gap:9}}>
+          {ROLES_INFO.map(r=>(
+            <div key={r.label} style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{background:r.color+"18",color:r.color,border:`1px solid ${r.color}44`,
+                padding:"2px 9px",borderRadius:20,fontSize:9,fontFamily:"'DM Mono',monospace",
+                fontWeight:700,whiteSpace:"nowrap",minWidth:68,textAlign:"center"}}>
+                {r.label}
+              </span>
+              <span style={{color:"#64748b",fontSize:11}}>{r.desc}</span>
             </div>
           ))}
         </div>
@@ -3177,18 +3213,9 @@ function Login({onLogin}) {
 }
 
 // ── APP ───────────────────────────────────────────────────────
-const MODS = [
-  {id:"sueldos",     label:"Sueldos",    icon:"👥", desc:"15 empleados"},
-  {id:"stock",       label:"Stock",      icon:"📦", desc:"M. Acosta · Cruz"},
-  {id:"pedidos",     label:"Pedidos",    icon:"🛒", desc:"Despacho · clientes"},
-  {id:"costos",      label:"Costos",     icon:"💰", desc:"Márgenes · precios"},
-  {id:"proveedores", label:"Proveedores",icon:"🤝", desc:"Cuentas corrientes"},
-  {id:"ventas",      label:"Ventas",     icon:"📊", desc:"6 locales · costanera"},
-];
-
 export default function App() {
   const [role,    setRole]   = useState(null);
-  const [mod,     setMod]    = useState("sueldos");
+  const [mod,     setMod]    = useState(null); // null until we know role
   const [loading, setLoading]= useState(!_cloud);
   const syncStatus = useSyncStatus();
 
@@ -3200,11 +3227,15 @@ export default function App() {
         try{localStorage.setItem(k,JSON.stringify(v));}catch{}
       });
       setLoading(false);
-    }).catch(()=>{
-      _cloud = {};
-      setLoading(false);
-    });
+    }).catch(()=>{ _cloud={}; setLoading(false); });
   },[]);
+
+  // When role is set, pick the first allowed module
+  const handleLogin = (r) => {
+    setRole(r);
+    const firstMod = MODS_ALL.find(m=>m.roles.includes(r));
+    setMod(firstMod?.id||"stock");
+  };
 
   if(loading) return (
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#fef3c7,#fff7ed)",
@@ -3221,13 +3252,17 @@ export default function App() {
     </div>
   );
 
-  if(!role) return <Login onLogin={setRole}/>;
+  if(!role) return <Login onLogin={handleLogin}/>;
 
-  const actual  = MODS.find(m=>m.id===mod);
   const isAdmin = role==="admin";
+  const canEdit = role==="admin" || role==="operador"; // lector no puede editar
+  const modsFiltrados = MODS_ALL.filter(m=>m.roles.includes(role));
+  const actual = modsFiltrados.find(m=>m.id===mod) || modsFiltrados[0];
+  const roleMeta = ROLE_META[role];
 
   return (
     <div style={{display:"flex",height:"100vh",width:"100vw",background:C.bg,fontFamily:"'Inter',sans-serif",color:C.text,overflow:"hidden"}}>
+      {/* Sidebar */}
       <div style={{width:220,background:C.panel,borderRight:`1px solid ${C.border}`,
         display:"flex",flexDirection:"column",flexShrink:0,height:"100vh",
         boxShadow:"2px 0 8px rgba(0,0,0,.06)"}}>
@@ -3242,21 +3277,21 @@ export default function App() {
           </div>
         </div>
         <nav style={{flex:1,padding:"8px 6px",display:"flex",flexDirection:"column",gap:2,overflowY:"auto"}}>
-          {MODS.map(m=>(
+          {modsFiltrados.map(m=>(
             <button key={m.id} onClick={()=>setMod(m.id)}
               style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,border:"none",
                 cursor:"pointer",textAlign:"left",width:"100%",
-                background:mod===m.id?"#fef3c7":"transparent",
+                background:actual?.id===m.id?"#fef3c7":"transparent",
                 transition:"all .15s"}}
-              onMouseEnter={e=>{ if(mod!==m.id) e.currentTarget.style.background="#f8fafc"; }}
-              onMouseLeave={e=>{ if(mod!==m.id) e.currentTarget.style.background="transparent"; }}>
+              onMouseEnter={e=>{ if(actual?.id!==m.id) e.currentTarget.style.background="#f8fafc"; }}
+              onMouseLeave={e=>{ if(actual?.id!==m.id) e.currentTarget.style.background="transparent"; }}>
               <div style={{width:32,height:32,borderRadius:8,
-                background:mod===m.id?C.accent+"20":"#f1f5f9",
+                background:actual?.id===m.id?C.accent+"20":"#f1f5f9",
                 display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>
                 {m.icon}
               </div>
               <div>
-                <div style={{color:mod===m.id?C.accent:C.text,fontSize:12,fontWeight:mod===m.id?600:400}}>{m.label}</div>
+                <div style={{color:actual?.id===m.id?C.accent:C.text,fontSize:12,fontWeight:actual?.id===m.id?600:400}}>{m.label}</div>
                 <div style={{color:C.muted,fontSize:9,fontFamily:"'DM Mono',monospace",marginTop:1}}>{m.desc}</div>
               </div>
             </button>
@@ -3271,13 +3306,14 @@ export default function App() {
           </div>
           <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-            <span style={{background:isAdmin?C.accent+"22":C.blue+"22",
-              color:isAdmin?C.accent:C.blue,border:`1px solid ${isAdmin?C.accent:C.blue}44`,
-              padding:"2px 8px",borderRadius:4,fontSize:9,fontFamily:"'DM Mono',monospace",fontWeight:600}}>
-              {isAdmin?"ADMIN":"LECTOR"}
+            <span style={{background:roleMeta.color+"18",color:roleMeta.color,
+              border:`1px solid ${roleMeta.color}44`,
+              padding:"2px 9px",borderRadius:20,fontSize:9,fontFamily:"'DM Mono',monospace",fontWeight:700}}>
+              {roleMeta.label}
             </span>
-            <button onClick={()=>setRole(null)} style={{background:"transparent",border:"none",
-              color:C.muted,cursor:"pointer",fontSize:9,fontFamily:"'DM Mono',monospace",textDecoration:"underline"}}>
+            <button onClick={()=>{setRole(null);setMod(null);}}
+              style={{background:"transparent",border:"none",
+                color:C.muted,cursor:"pointer",fontSize:9,fontFamily:"'DM Mono',monospace",textDecoration:"underline"}}>
               salir
             </button>
           </div>
@@ -3287,18 +3323,20 @@ export default function App() {
         </div>
       </div>
 
+      {/* Contenido principal */}
       <div style={{flex:1,overflow:"auto",display:"flex",flexDirection:"column",minWidth:0}}>
-        <div style={{padding:"18px 28px",borderBottom:`1px solid ${C.border}`,background:C.panel,position:"sticky",top:0,zIndex:10,
+        <div style={{padding:"18px 28px",borderBottom:`1px solid ${C.border}`,background:C.panel,
+          position:"sticky",top:0,zIndex:10,
           boxShadow:`0 1px 0 ${C.border}, 0 2px 4px rgba(0,0,0,.04)`}}>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
             <div style={{width:40,height:40,borderRadius:10,background:C.accent+"18",
               display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,
-              border:`1px solid ${C.accent}22`}}>{actual.icon}</div>
+              border:`1px solid ${C.accent}22`}}>{actual?.icon}</div>
             <div>
-              <h1 style={{margin:0,fontSize:18,fontWeight:800,letterSpacing:-0.5,color:C.text}}>{actual.label}</h1>
-              <p style={{margin:0,color:C.textSub,fontSize:10,fontFamily:"'DM Mono',monospace",marginTop:1}}>{actual.desc}</p>
+              <h1 style={{margin:0,fontSize:18,fontWeight:800,letterSpacing:-0.5,color:C.text}}>{actual?.label}</h1>
+              <p style={{margin:0,color:C.textSub,fontSize:10,fontFamily:"'DM Mono',monospace",marginTop:1}}>{actual?.desc}</p>
             </div>
-            {!isAdmin&&(
+            {!canEdit&&(
               <span style={{marginLeft:"auto",background:C.blue+"15",color:C.blue,
                 border:`1px solid ${C.blue}30`,padding:"4px 12px",borderRadius:6,
                 fontSize:10,fontFamily:"'DM Mono',monospace"}}>
@@ -3308,12 +3346,12 @@ export default function App() {
           </div>
         </div>
         <div style={{padding:"24px 32px",flex:1}}>
-          {mod==="sueldos"     && <ModuloSueldos     isAdmin={isAdmin}/>}
-          {mod==="stock"       && <ModuloStock        isAdmin={isAdmin}/>}
-          {mod==="pedidos"     && <ModuloPedidos      isAdmin={isAdmin}/>}
-          {mod==="costos"      && <ModuloCostos       isAdmin={isAdmin}/>}
-          {mod==="proveedores" && <ModuloProveedores  isAdmin={isAdmin}/>}
-          {mod==="ventas"      && <ModuloVentas       isAdmin={isAdmin}/>}
+          {actual?.id==="sueldos"     && <ModuloSueldos     isAdmin={isAdmin}/>}
+          {actual?.id==="stock"       && <ModuloStock        isAdmin={canEdit}/>}
+          {actual?.id==="pedidos"     && <ModuloPedidos      isAdmin={canEdit}/>}
+          {actual?.id==="costos"      && <ModuloCostos       isAdmin={isAdmin}/>}
+          {actual?.id==="proveedores" && <ModuloProveedores  isAdmin={canEdit}/>}
+          {actual?.id==="ventas"      && <ModuloVentas       isAdmin={canEdit}/>}
         </div>
       </div>
     </div>
