@@ -48,7 +48,7 @@ async function cloudRead() {
     // Fallback a localStorage
     const keys=["parrillas-emps","parrillas-stock","parrillas-pedidos","parrillas-costos",
       "parrillas-externas","parrillas-precios-cliente","parrillas-proveedores",
-      "parrillas-ventas","parrillas-productos"];
+      "parrillas-ventas","parrillas-ventas2","parrillas-cierres","parrillas-vendidos","parrillas-productos"];
     const rec={};
     keys.forEach(k=>{try{const v=localStorage.getItem(k);if(v)rec[k]=JSON.parse(v);}catch{}});
     return rec;
@@ -2085,145 +2085,500 @@ function ModuloCostos({isAdmin}) {
 
 
 // ── PROVEEDORES ───────────────────────────────────────────────
+// Estructura de cada proveedor:
+// { id, nombre, vencimiento ("sin vencimiento" | fecha), estado,
+//   entregas: [{id, fecha, monto, descripcion}],
+//   pagos:    [{id, fecha, monto, nota}] }
+// saldo = sum(entregas.monto) - sum(pagos.monto)
+
+function calcSaldo(p) {
+  const totalEntregas = (p.entregas||[]).reduce((a,e)=>a+e.monto,0);
+  const totalPagos    = (p.pagos||[]).reduce((a,pg)=>a+pg.monto,0);
+  return Math.max(0, totalEntregas - totalPagos);
+}
+
+function calcEstado(p) {
+  const saldo = calcSaldo(p);
+  if(saldo===0) return "pagado";
+  if(p.vencimiento && p.vencimiento!=="sin vencimiento" && p.vencimiento < new Date().toISOString().slice(0,10)) return "vencido";
+  return "vigente";
+}
+
 function ModuloProveedores({isAdmin}) {
   const [provs, setProvs] = useSaved("parrillas-proveedores", []);
   const [saved, setSaved] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [pago, setPago]   = useState({id:null,monto:""});
-  const [form, setForm]   = useState({nombre:"",saldo:"",vencimiento:""});
+  const [tab, setTab]     = useState("lista");     // lista | detalle
+  const [provSel, setProvSel] = useState(null);    // id del proveedor en detalle
+  const [showNuevo, setShowNuevo] = useState(false);
+  const [formNuevo, setFormNuevo] = useState({nombre:"", vencimiento:"", sinVenc:false});
+  // Modales de movimiento
+  const [modalMov, setModalMov] = useState(null);  // {tipo:"entrega"|"pago", provId}
+  const [formMov, setFormMov]   = useState({monto:"", fecha:new Date().toISOString().slice(0,10), desc:""});
 
   const doSave = next => { setProvs(next); setSaved(true); setTimeout(()=>setSaved(false),2000); };
   const ec = e => e==="pagado"?C.green:e==="vencido"?C.red:C.accent;
 
-  const registrar = id => {
-    const m=+pago.monto; if(!m) return;
-    doSave(provs.map(p=>p.id===id?{...p,saldo:Math.max(0,p.saldo-m),
-      ultimoPago:new Date().toISOString().slice(0,10),estado:p.saldo-m<=0?"pagado":p.estado}:p));
-    setPago({id:null,monto:""});
-  };
-  const agregar = () => {
-    if(!form.nombre) return;
-    doSave([...provs,{id:Date.now(),...form,saldo:+form.saldo,ultimoPago:"—",estado:+form.saldo===0?"pagado":"vigente"}]);
-    setForm({nombre:"",saldo:"",vencimiento:""}); setShowForm(false);
+  // Agregar proveedor
+  const agregarProv = () => {
+    if(!formNuevo.nombre) return;
+    const venc = formNuevo.sinVenc ? "sin vencimiento" : (formNuevo.vencimiento||"sin vencimiento");
+    doSave([...provs,{id:Date.now(),nombre:formNuevo.nombre,vencimiento:venc,
+      entregas:[], pagos:[]}]);
+    setFormNuevo({nombre:"",vencimiento:"",sinVenc:false});
+    setShowNuevo(false);
   };
 
-  const totalDeuda = provs.reduce((a,p)=>a+p.saldo,0);
-  const vencidos   = provs.filter(p=>p.estado==="vencido");
+  // Agregar movimiento (entrega o pago)
+  const agregarMov = () => {
+    if(!formMov.monto||+formMov.monto<=0) return;
+    const {tipo, provId} = modalMov;
+    const mov = {id:Date.now(), monto:+formMov.monto, fecha:formMov.fecha, desc:formMov.desc};
+    doSave(provs.map(p=>{
+      if(p.id!==provId) return p;
+      if(tipo==="entrega") return {...p, entregas:[...(p.entregas||[]),mov]};
+      return {...p, pagos:[...(p.pagos||[]),mov]};
+    }));
+    setModalMov(null);
+    setFormMov({monto:"", fecha:new Date().toISOString().slice(0,10), desc:""});
+  };
+
+  // Eliminar movimiento
+  const eliminarMov = (provId, tipo, movId) => {
+    doSave(provs.map(p=>{
+      if(p.id!==provId) return p;
+      if(tipo==="entrega") return {...p, entregas:(p.entregas||[]).filter(e=>e.id!==movId)};
+      return {...p, pagos:(p.pagos||[]).filter(pg=>pg.id!==movId)};
+    }));
+  };
+
+  const provsConSaldo = provs.map(p=>({...p, saldo:calcSaldo(p), estado:calcEstado(p)}));
+  const totalDeuda    = provsConSaldo.reduce((a,p)=>a+p.saldo,0);
+  const vencidos      = provsConSaldo.filter(p=>p.estado==="vencido");
+  const provDetalleData = provSel ? provsConSaldo.find(p=>p.id===provSel) : null;
+
+  const dm = {fontFamily:"'DM Mono',monospace"};
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
-        <KPI label="Deuda total" value={provs.length?fmt(totalDeuda):"—"} sub={`${provs.length} proveedores`} color={C.red}/>
-        <KPI label="Cuentas vencidas" value={vencidos.length.toString()} sub={vencidos.map(v=>v.nombre.split(" ")[0]).join(", ")||"Ninguna"} color={vencidos.length>0?C.red:C.green}/>
-        <KPI label="Saldadas" value={provs.filter(p=>p.estado==="pagado").length.toString()} sub="Al día" color={C.green}/>
-      </div>
-      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14}}>Cuentas Corrientes</span>
-            <Saved show={saved}/>
-          </div>
-          <div style={{display:"flex",gap:8}}>
-            <PDFBtn onClick={()=>exportPDF("Proveedores",provs.map(p=>({
-              nombre:p.nombre,saldo:p.saldo>0?fmt(p.saldo):"Saldado",
-              ultimoPago:p.ultimoPago,vencimiento:p.vencimiento||"—",estado:p.estado})),
-              [{key:"nombre",label:"Proveedor"},{key:"saldo",label:"Saldo"},
-               {key:"ultimoPago",label:"Último pago"},{key:"vencimiento",label:"Vencimiento"},{key:"estado",label:"Estado"}])}/>
-            {isAdmin&&<button onClick={()=>setShowForm(!showForm)} style={{background:C.accent,color:C.bg,border:"none",borderRadius:6,
-              padding:"5px 12px",fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:11,cursor:"pointer"}}>
-              {showForm?"Cancelar":"+ Proveedor"}
-            </button>}
+
+      {/* Modal movimiento */}
+      {modalMov&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:999,
+          display:"flex",alignItems:"center",justifyContent:"center"}}
+          onClick={e=>e.target===e.currentTarget&&setModalMov(null)}>
+          <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:14,
+            padding:"28px",width:420,display:"flex",flexDirection:"column",gap:16,
+            boxShadow:"0 20px 60px rgba(0,0,0,.15)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:16,color:C.text}}>
+                  {modalMov.tipo==="entrega"?"📦 Registrar entrega":"💸 Registrar pago"}
+                </div>
+                <div style={{fontSize:12,color:C.textSub,marginTop:2}}>
+                  {provsConSaldo.find(p=>p.id===modalMov.provId)?.nombre}
+                </div>
+              </div>
+              <button onClick={()=>setModalMov(null)}
+                style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>×</button>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+              <div>
+                <div style={{fontSize:10,color:C.textSub,...dm,textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>
+                  {modalMov.tipo==="entrega"?"Monto entregado ($)":"Monto pagado ($)"}
+                </div>
+                <input type="number" autoFocus style={{...inp,width:"100%"}}
+                  value={formMov.monto} onChange={e=>setFormMov(v=>({...v,monto:e.target.value}))}
+                  placeholder="0"/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:C.textSub,...dm,textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Fecha</div>
+                <input type="date" style={{...inp,width:"100%"}}
+                  value={formMov.fecha} onChange={e=>setFormMov(v=>({...v,fecha:e.target.value}))}/>
+              </div>
+              <div style={{gridColumn:"1/-1"}}>
+                <div style={{fontSize:10,color:C.textSub,...dm,textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>
+                  {modalMov.tipo==="entrega"?"Descripción (factura, producto…)":"Nota (transferencia, cheque…)"}
+                </div>
+                <input style={{...inp,width:"100%"}} value={formMov.desc}
+                  onChange={e=>setFormMov(v=>({...v,desc:e.target.value}))}
+                  placeholder="Opcional…"/>
+              </div>
+            </div>
+            {/* Preview saldo */}
+            {formMov.monto&&+formMov.monto>0&&(()=>{
+              const prov = provsConSaldo.find(p=>p.id===modalMov.provId);
+              if(!prov) return null;
+              const nuevoSaldo = modalMov.tipo==="entrega"
+                ? prov.saldo + (+formMov.monto)
+                : Math.max(0, prov.saldo - (+formMov.monto));
+              return (
+                <div style={{background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius:8,
+                  padding:"10px 14px",display:"flex",justifyContent:"space-between",fontSize:12}}>
+                  <span style={{color:C.textSub}}>Saldo actual: <strong>{fmt(prov.saldo)}</strong></span>
+                  <span style={{color:nuevoSaldo>prov.saldo?C.red:C.green,fontWeight:700}}>
+                    → Nuevo saldo: {fmt(nuevoSaldo)}
+                  </span>
+                </div>
+              );
+            })()}
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+              <button onClick={()=>setModalMov(null)}
+                style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,
+                  padding:"9px 20px",color:C.textSub,cursor:"pointer",
+                  fontFamily:"'Inter',sans-serif",fontWeight:600,fontSize:13}}>Cancelar</button>
+              <button onClick={agregarMov}
+                style={{background:modalMov.tipo==="entrega"?C.red:C.green,border:"none",borderRadius:8,
+                  padding:"9px 20px",color:"#fff",cursor:"pointer",
+                  fontFamily:"'Inter',sans-serif",fontWeight:700,fontSize:13}}>
+                {modalMov.tipo==="entrega"?"Registrar entrega":"Registrar pago"}
+              </button>
+            </div>
           </div>
         </div>
-        {isAdmin&&showForm&&(
-          <div style={{padding:"11px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8,alignItems:"flex-end",background:C.bg,flexWrap:"wrap"}}>
-            {[["Proveedor","nombre","text","210px"],["Saldo ($)","saldo","number","120px"],["Vencimiento","vencimiento","date","145px"]].map(([l,k,t,w])=>(
-              <div key={k}>
-                <div style={{color:C.textSub,fontSize:9,marginBottom:3}}>{l}</div>
-                <input type={t} style={{...inp,width:w}} value={form[k]} onChange={e=>setForm(f=>({...f,[k]:e.target.value}))}/>
-              </div>
-            ))}
-            <button onClick={agregar} style={{background:C.green,border:"none",borderRadius:6,padding:"7px 14px",
-              fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:11,cursor:"pointer",color:"#000"}}>Guardar</button>
-          </div>
-        )}
-        {provs.length===0
-          ? <div style={{padding:"36px",textAlign:"center",color:C.muted,fontFamily:"'DM Mono',monospace",fontSize:11}}>
-              {isAdmin?"Sin proveedores. Usá + Proveedor para agregar el primero.":"Sin proveedores cargados aún."}
-            </div>
-          : <table style={{width:"100%",borderCollapse:"collapse"}}>
-              <thead><tr>
-                <Th>Proveedor</Th><Th>Saldo</Th><Th>Último pago</Th><Th>Vencimiento</Th><Th>Estado</Th>
-                {isAdmin&&<Th>Registrar pago</Th>}{isAdmin&&<Th></Th>}
-              </tr></thead>
-              <tbody>
-                {provs.map(p=>(
-                  <tr key={p.id} {...rh}>
-                    <Td><strong>{p.nombre}</strong></Td>
-                    <Td style={{fontFamily:"'DM Mono',monospace",color:p.saldo>0?C.red:C.green,fontWeight:700}}>{p.saldo>0?fmt(p.saldo):"Saldado"}</Td>
-                    <Td style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:C.textSub}}>{p.ultimoPago}</Td>
-                    <Td style={{fontFamily:"'DM Mono',monospace",fontSize:11}}>{p.vencimiento||"—"}</Td>
-                    <Td><Badge color={ec(p.estado)}>{p.estado}</Badge></Td>
-                    {isAdmin&&<Td>
-                      {p.saldo>0&&(pago.id===p.id
-                        ? <span style={{display:"flex",gap:4,alignItems:"center"}}>
-                            <input type="number" value={pago.monto} placeholder="Monto"
-                              onChange={e=>setPago(v=>({...v,monto:e.target.value}))}
-                              style={{...inp,width:90,padding:"3px 6px"}}/>
-                            <SmBtn onClick={()=>registrar(p.id)}>✓</SmBtn>
-                            <SmBtn onClick={()=>setPago({id:null,monto:""})} color={C.muted}>✕</SmBtn>
-                          </span>
-                        : <GhBtn onClick={()=>setPago({id:p.id,monto:""})}>Registrar pago</GhBtn>
-                      )}
-                    </Td>}
-                    {isAdmin&&<Td>
-                      <button onClick={()=>doSave(provs.filter(x=>x.id!==p.id))}
-                        style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:14,opacity:.5}}>×</button>
-                    </Td>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>}
+      )}
+
+      {/* KPIs */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
+        <KPI label="Deuda total" value={provsConSaldo.length?fmt(totalDeuda):"—"} sub={`${provs.length} proveedores`} color={C.red}/>
+        <KPI label="Cuentas vencidas" value={vencidos.length.toString()} sub={vencidos.map(v=>v.nombre.split(" ")[0]).join(", ")||"Ninguna"} color={vencidos.length>0?C.red:C.green}/>
+        <KPI label="Saldadas" value={provsConSaldo.filter(p=>p.estado==="pagado").length.toString()} sub="Al día" color={C.green}/>
+        <KPI label="Vigentes con deuda" value={provsConSaldo.filter(p=>p.estado==="vigente"&&p.saldo>0).length.toString()} sub="En curso" color={C.accent}/>
       </div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:8,alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{display:"flex",gap:8}}>
+          <TabBtn active={tab==="lista"} onClick={()=>{setTab("lista");setProvSel(null);}}>📋 Cuentas corrientes</TabBtn>
+          {provDetalleData&&<TabBtn active={tab==="detalle"} onClick={()=>setTab("detalle")} color={C.blue}>📊 {provDetalleData.nombre}</TabBtn>}
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <PDFBtn onClick={()=>exportPDF("Estado de Cuentas",
+            provsConSaldo.map(p=>({nombre:p.nombre,saldo:p.saldo>0?fmt(p.saldo):"Saldado",
+              entregas:fmt((p.entregas||[]).reduce((a,e)=>a+e.monto,0)),
+              pagos:fmt((p.pagos||[]).reduce((a,pg)=>a+pg.monto,0)),
+              vencimiento:p.vencimiento||"—",estado:p.estado})),
+            [{key:"nombre",label:"Proveedor"},{key:"entregas",label:"Total entregas"},
+             {key:"pagos",label:"Total pagos"},{key:"saldo",label:"Saldo actual"},
+             {key:"vencimiento",label:"Vencimiento"},{key:"estado",label:"Estado"}])}/>
+          {isAdmin&&<button onClick={()=>setShowNuevo(!showNuevo)}
+            style={{background:C.accent,color:"#fff",border:"none",borderRadius:7,
+              padding:"6px 14px",fontFamily:"'Inter',sans-serif",fontWeight:600,fontSize:12,cursor:"pointer"}}>
+            {showNuevo?"Cancelar":"+ Proveedor"}
+          </button>}
+        </div>
+      </div>
+
+      {/* Formulario nuevo proveedor */}
+      {isAdmin&&showNuevo&&(
+        <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"16px"}}>
+          <div style={{fontWeight:600,fontSize:13,color:C.text,marginBottom:12}}>Nuevo proveedor</div>
+          <div style={{display:"flex",gap:12,alignItems:"flex-end",flexWrap:"wrap"}}>
+            <div style={{flex:2,minWidth:180}}>
+              <div style={{fontSize:10,color:C.textSub,...dm,textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Nombre</div>
+              <input style={{...inp,width:"100%"}} value={formNuevo.nombre}
+                onChange={e=>setFormNuevo(v=>({...v,nombre:e.target.value}))}
+                placeholder="Nombre del proveedor…"/>
+            </div>
+            {!formNuevo.sinVenc&&(
+              <div>
+                <div style={{fontSize:10,color:C.textSub,...dm,textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Vencimiento</div>
+                <input type="date" style={{...inp}} value={formNuevo.vencimiento}
+                  onChange={e=>setFormNuevo(v=>({...v,vencimiento:e.target.value}))}/>
+              </div>
+            )}
+            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:12,color:C.textSub,paddingBottom:2}}>
+              <input type="checkbox" checked={formNuevo.sinVenc}
+                onChange={e=>setFormNuevo(v=>({...v,sinVenc:e.target.checked,vencimiento:""}))}
+                style={{width:15,height:15,accentColor:C.accent}}/>
+              Sin vencimiento
+            </label>
+            <button onClick={agregarProv}
+              style={{background:C.green,border:"none",borderRadius:8,padding:"9px 20px",
+                color:"#fff",cursor:"pointer",fontFamily:"'Inter',sans-serif",fontWeight:700,fontSize:13}}>
+              Guardar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── LISTA DE PROVEEDORES ── */}
+      {tab==="lista"&&(
+        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+          {provsConSaldo.length===0
+            ? <div style={{padding:"40px",textAlign:"center",color:C.muted,...dm,fontSize:11}}>
+                {isAdmin?"Sin proveedores. Usá \"+ Proveedor\" para agregar el primero.":"Sin proveedores cargados aún."}
+              </div>
+            : <table style={{width:"100%",borderCollapse:"collapse"}}>
+                <thead><tr>
+                  <Th>Proveedor</Th><Th>Total entregas</Th><Th>Total pagado</Th>
+                  <Th>Saldo actual</Th><Th>Vencimiento</Th><Th>Estado</Th>
+                  {isAdmin&&<Th>Acciones</Th>}
+                  <Th></Th>
+                </tr></thead>
+                <tbody>
+                  {provsConSaldo.map(p=>(
+                    <tr key={p.id} style={{cursor:"pointer"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      <Td>
+                        <button onClick={()=>{setProvSel(p.id);setTab("detalle");}}
+                          style={{background:"transparent",border:"none",cursor:"pointer",
+                            fontWeight:700,color:C.blue,textDecoration:"underline",
+                            fontSize:13,padding:0,fontFamily:"'Inter',sans-serif"}}>
+                          {p.nombre}
+                        </button>
+                      </Td>
+                      <Td style={{...dm,fontSize:11,color:C.red}}>
+                        {(p.entregas||[]).length>0?fmt((p.entregas||[]).reduce((a,e)=>a+e.monto,0)):"—"}
+                        <span style={{color:C.muted,marginLeft:4,fontSize:9}}>{(p.entregas||[]).length} movs.</span>
+                      </Td>
+                      <Td style={{...dm,fontSize:11,color:C.green}}>
+                        {(p.pagos||[]).length>0?fmt((p.pagos||[]).reduce((a,pg)=>a+pg.monto,0)):"—"}
+                        <span style={{color:C.muted,marginLeft:4,fontSize:9}}>{(p.pagos||[]).length} pagos</span>
+                      </Td>
+                      <Td style={{...dm,fontWeight:700,fontSize:14,color:p.saldo>0?C.red:C.green}}>
+                        {p.saldo>0?fmt(p.saldo):"Saldado"}
+                      </Td>
+                      <Td style={{...dm,fontSize:11,color:C.textSub}}>
+                        {p.vencimiento==="sin vencimiento"
+                          ? <Badge color={C.muted}>Sin vencimiento</Badge>
+                          : p.vencimiento||"—"}
+                      </Td>
+                      <Td><Badge color={ec(p.estado)}>{p.estado}</Badge></Td>
+                      {isAdmin&&<Td>
+                        <div style={{display:"flex",gap:6}}>
+                          <button onClick={()=>setModalMov({tipo:"entrega",provId:p.id})}
+                            style={{background:"#fee2e2",color:"#dc2626",border:"1px solid #fca5a5",
+                              borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",
+                              fontFamily:"'Inter',sans-serif",fontWeight:500}}>
+                            + Entrega
+                          </button>
+                          <button onClick={()=>setModalMov({tipo:"pago",provId:p.id})}
+                            style={{background:"#dcfce7",color:"#16a34a",border:"1px solid #86efac",
+                              borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",
+                              fontFamily:"'Inter',sans-serif",fontWeight:500}}>
+                            + Pago
+                          </button>
+                        </div>
+                      </Td>}
+                      <Td>
+                        <div style={{display:"flex",gap:4}}>
+                          <GhBtn onClick={()=>{setProvSel(p.id);setTab("detalle");}}>Ver detalle</GhBtn>
+                          {isAdmin&&<button onClick={()=>doSave(provs.filter(x=>x.id!==p.id))}
+                            style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:13,opacity:.4}}>×</button>}
+                        </div>
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>}
+        </div>
+      )}
+
+      {/* ── DETALLE DE PROVEEDOR ── */}
+      {tab==="detalle"&&provDetalleData&&(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          {/* Header */}
+          <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,
+            padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontWeight:800,fontSize:18,color:C.blue}}>{provDetalleData.nombre}</div>
+              <div style={{fontSize:12,color:"#3b82f6",marginTop:3,...dm}}>
+                Vencimiento: {provDetalleData.vencimiento==="sin vencimiento"?"Sin vencimiento":provDetalleData.vencimiento||"—"}
+                {" · "}<Badge color={ec(provDetalleData.estado)}>{provDetalleData.estado}</Badge>
+              </div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:11,color:C.textSub,marginBottom:4,...dm}}>SALDO ACTUAL</div>
+              <div style={{fontSize:28,fontWeight:800,...dm,color:provDetalleData.saldo>0?C.red:C.green}}>
+                {provDetalleData.saldo>0?fmt(provDetalleData.saldo):"✓ Saldado"}
+              </div>
+            </div>
+          </div>
+
+          {/* Resumen */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
+            <KPI label="Total entregas"
+              value={fmt((provDetalleData.entregas||[]).reduce((a,e)=>a+e.monto,0))}
+              sub={`${(provDetalleData.entregas||[]).length} movimientos`} color={C.red}/>
+            <KPI label="Total pagado"
+              value={fmt((provDetalleData.pagos||[]).reduce((a,pg)=>a+pg.monto,0))}
+              sub={`${(provDetalleData.pagos||[]).length} pagos`} color={C.green}/>
+            <KPI label="Saldo pendiente"
+              value={provDetalleData.saldo>0?fmt(provDetalleData.saldo):"Saldado"}
+              color={provDetalleData.saldo>0?C.red:C.green}/>
+          </div>
+
+          {isAdmin&&(
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setModalMov({tipo:"entrega",provId:provDetalleData.id})}
+                style={{background:"#fee2e2",color:"#dc2626",border:"1px solid #fca5a5",
+                  borderRadius:8,padding:"9px 20px",fontSize:13,cursor:"pointer",
+                  fontFamily:"'Inter',sans-serif",fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+                📦 Registrar nueva entrega
+              </button>
+              <button onClick={()=>setModalMov({tipo:"pago",provId:provDetalleData.id})}
+                style={{background:"#dcfce7",color:"#16a34a",border:"1px solid #86efac",
+                  borderRadius:8,padding:"9px 20px",fontSize:13,cursor:"pointer",
+                  fontFamily:"'Inter',sans-serif",fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+                💸 Registrar pago
+              </button>
+            </div>
+          )}
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            {/* Entregas */}
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+              <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,
+                display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontWeight:700,fontSize:13,color:C.red}}>📦 Historial de entregas</span>
+                <Badge color={C.red}>{(provDetalleData.entregas||[]).length}</Badge>
+              </div>
+              {(provDetalleData.entregas||[]).length===0
+                ? <div style={{padding:"24px",textAlign:"center",color:C.muted,...dm,fontSize:11}}>
+                    Sin entregas registradas aún
+                  </div>
+                : <div style={{maxHeight:340,overflowY:"auto"}}>
+                    {[...(provDetalleData.entregas||[])].reverse().map((e,i)=>(
+                      <div key={e.id} style={{padding:"10px 16px",borderBottom:`1px solid ${C.border}`,
+                        display:"flex",alignItems:"center",gap:10}}
+                        onMouseEnter={ev=>ev.currentTarget.style.background="#f8fafc"}
+                        onMouseLeave={ev=>ev.currentTarget.style.background="transparent"}>
+                        <div style={{flex:1}}>
+                          <div style={{fontWeight:700,...dm,fontSize:14,color:C.red}}>{fmt(e.monto)}</div>
+                          <div style={{fontSize:11,color:C.textSub,marginTop:2}}>
+                            {e.fecha}{e.desc?` · ${e.desc}`:""}
+                          </div>
+                        </div>
+                        {isAdmin&&<button onClick={()=>eliminarMov(provDetalleData.id,"entrega",e.id)}
+                          style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:13,opacity:.4}}>×</button>}
+                      </div>
+                    ))}
+                    <div style={{padding:"10px 16px",background:"#fef2f2",
+                      display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:700}}>
+                      <span style={{color:C.textSub}}>Total entregas</span>
+                      <span style={{...dm,color:C.red}}>{fmt((provDetalleData.entregas||[]).reduce((a,e)=>a+e.monto,0))}</span>
+                    </div>
+                  </div>}
+            </div>
+
+            {/* Pagos */}
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+              <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,
+                display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontWeight:700,fontSize:13,color:C.green}}>💸 Historial de pagos</span>
+                <Badge color={C.green}>{(provDetalleData.pagos||[]).length}</Badge>
+              </div>
+              {(provDetalleData.pagos||[]).length===0
+                ? <div style={{padding:"24px",textAlign:"center",color:C.muted,...dm,fontSize:11}}>
+                    Sin pagos registrados aún
+                  </div>
+                : <div style={{maxHeight:340,overflowY:"auto"}}>
+                    {[...(provDetalleData.pagos||[])].reverse().map((pg)=>(
+                      <div key={pg.id} style={{padding:"10px 16px",borderBottom:`1px solid ${C.border}`,
+                        display:"flex",alignItems:"center",gap:10}}
+                        onMouseEnter={ev=>ev.currentTarget.style.background="#f8fafc"}
+                        onMouseLeave={ev=>ev.currentTarget.style.background="transparent"}>
+                        <div style={{flex:1}}>
+                          <div style={{fontWeight:700,...dm,fontSize:14,color:C.green}}>{fmt(pg.monto)}</div>
+                          <div style={{fontSize:11,color:C.textSub,marginTop:2}}>
+                            {pg.fecha}{pg.desc?` · ${pg.desc}`:""}
+                          </div>
+                        </div>
+                        {isAdmin&&<button onClick={()=>eliminarMov(provDetalleData.id,"pago",pg.id)}
+                          style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:13,opacity:.4}}>×</button>}
+                      </div>
+                    ))}
+                    <div style={{padding:"10px 16px",background:"#f0fdf4",
+                      display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:700}}>
+                      <span style={{color:C.textSub}}>Total pagado</span>
+                      <span style={{...dm,color:C.green}}>{fmt((provDetalleData.pagos||[]).reduce((a,pg)=>a+pg.monto,0))}</span>
+                    </div>
+                  </div>}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
+
 // ── VENTAS ────────────────────────────────────────────────────
-// Los períodos se guardan dinámicamente — el admin puede agregar/archivar meses
+const VENTAS_INIT = ["Oct","Nov","Dic","Ene","Feb","Mar"].map(mes =>
+  ({mes,...Object.fromEntries(LKEYS.map(k=>[k,{t1:0,t2:0}]))})
+);
 
 function ModuloVentas({isAdmin}) {
-  const [datos, setDatos] = useSaved("parrillas-ventas", VENTAS_INIT);
-  const [pedidos]         = useSaved("parrillas-pedidos", []);
-  const [saved,  setSaved]  = useState(false);
-  const [vista,  setVista]  = useState("barras");
-  const [tab,    setTab]    = useState("locales");
-  const [editCell, setEditCell] = useState(null);
-  const [editVal,  setEditVal]  = useState("");
-
-  // Gestión de períodos
+  const [datos,   setDatos]  = useSaved("parrillas-ventas2", VENTAS_INIT);
+  const [cierres, setCierres]= useSaved("parrillas-cierres", []);
+  const [vendidos,setVendidos]= useSaved("parrillas-vendidos",[]);
+  const [pedidos]            = useSaved("parrillas-pedidos",  []);
+  const [stock]              = useSaved("parrillas-stock",    STOCK_INIT);
+  const [saved,  setSaved]   = useState(false);
+  const [tab,    setTab]     = useState("cierres");
+  const [vista,  setVista]   = useState("barras");
   const [showPeriodos, setShowPeriodos] = useState(false);
+  const [showNuevoCierre, setShowNuevoCierre] = useState(false);
+  const [showNuevoVendido, setShowNuevoVendido] = useState(false);
+
+  // Form nuevo cierre de caja
+  const [formCierre, setFormCierre] = useState({
+    fecha: new Date().toISOString().slice(0,10),
+    local: "LITO'S", turno:"7hs", monto:""
+  });
+
+  // Form mercadería vendida
+  const [formVend, setFormVend] = useState({
+    fecha: new Date().toISOString().slice(0,10),
+    local:"LITO'S", turno:"7hs", items:[]
+  });
+  const [vendQ, setVendQ] = useState("");
+  const [vendCant, setVendCant] = useState({});
+
   const MESES_OPT = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  const TURNOS = ["7hs","19hs"];
 
-  const doSave  = next => { setDatos(next); setSaved(true); setTimeout(()=>setSaved(false),2000); };
-  const saveCell = (mi,k) => { doSave(datos.map((d,i)=>i===mi?{...d,[k]:+editVal}:d)); setEditCell(null); };
+  const doSave = next => { setDatos(next); setSaved(true); setTimeout(()=>setSaved(false),2000); };
 
-  const agregarPeriodo = (mes) => {
-    if(datos.find(d=>d.mes===mes)) return;
-    doSave([...datos,{mes,...Object.fromEntries(LKEYS.map(k=>[k,0]))}]);
+  // Períodos dinámicos
+  const agregarPeriodo  = mes => { if(datos.find(d=>d.mes===mes)) return; doSave([...datos,{mes,...Object.fromEntries(LKEYS.map(k=>[k,{t1:0,t2:0}]))}]); };
+  const eliminarPeriodo = mes => { if(datos.length<=1) return; doSave(datos.filter(d=>d.mes!==mes)); };
+  const mesesDisponibles = MESES_OPT.filter(m=>!datos.find(d=>d.mes===m));
+
+  // Cierres de caja
+  const saveCierre = next => { setCierres(next); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+  const agregarCierre = () => {
+    if(!formCierre.monto||+formCierre.monto<=0) return;
+    saveCierre([{id:Date.now(),...formCierre,monto:+formCierre.monto},...cierres]);
+    setFormCierre(f=>({...f,monto:""}));
+    setShowNuevoCierre(false);
   };
 
-  const eliminarPeriodo = (mes) => {
-    if(datos.length<=1) return;
-    doSave(datos.filter(d=>d.mes!==mes));
+  // Mercadería vendida
+  const saveVend = next => { setVendidos(next); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+  const stockFiltrado = vendQ.trim()===""?stock:stock.filter(s=>s.producto.toLowerCase().includes(vendQ.toLowerCase()));
+
+  const addVendItem = (prod, cant) => {
+    const c = Math.max(1,+(cant||1));
+    const existe = formVend.items.find(i=>i.stockId===prod.id);
+    if(existe) setFormVend(f=>({...f,items:f.items.map(i=>i.stockId===prod.id?{...i,cantidad:i.cantidad+c}:i)}));
+    else setFormVend(f=>({...f,items:[...f.items,{stockId:prod.id,producto:prod.producto,cantidad:c,unidad:prod.unidad||"u"}]}));
+    setVendCant(v=>({...v,[prod.id]:""}));
   };
 
-  // Métricas locales
-  const totLocal = k => datos.reduce((a,m)=>a+m[k],0);
-  const totGen   = LKEYS.reduce((a,k)=>a+totLocal(k),0);
-  const mejorIdx = LKEYS.reduce((bi,k,i,arr)=>totLocal(k)>totLocal(arr[bi])?i:bi,0);
-  const tieneData = totGen>0;
-  const nPeriodos = datos.length;
+  const confirmarVendido = () => {
+    if(!formVend.items.length) return;
+    saveVend([{id:Date.now(),...formVend},...vendidos]);
+    setFormVend(f=>({...f,items:[]}));
+    setVendQ(""); setVendCant({});
+    setShowNuevoVendido(false);
+  };
+
+  // Métricas cierres
+  const totalCierres = cierres.reduce((a,c)=>a+c.monto,0);
+  const cierresHoy   = cierres.filter(c=>c.fecha===new Date().toISOString().slice(0,10));
+  const totalHoy     = cierresHoy.reduce((a,c)=>a+c.monto,0);
 
   // Mayorista: desde pedidos
   const pedExt = pedidos.filter(p=>p.tipo==="cliente");
@@ -2236,8 +2591,24 @@ function ModuloVentas({isAdmin}) {
   });
   const cliList = Object.values(cliMap).sort((a,b)=>b.unidades-a.unidades);
 
-  // Meses disponibles para agregar (no cargados aún)
-  const mesesDisponibles = MESES_OPT.filter(m=>!datos.find(d=>d.mes===m));
+  // Métricas locales (ventas manuales por período)
+  const totLocal  = k => datos.reduce((a,m)=>a+(m[k]?.t1||0)+(m[k]?.t2||0),0);
+  const totGen    = LKEYS.reduce((a,k)=>a+totLocal(k),0);
+  const mejorIdx  = LKEYS.reduce((bi,k,i,arr)=>totLocal(k)>totLocal(arr[bi])?i:bi,0);
+  const tieneData = totGen>0;
+  const nPeriodos = datos.length;
+
+  const dm = {fontFamily:"'DM Mono',monospace"};
+
+  // Helper: editar celda de tabla ventas
+  const [editCell, setEditCell] = useState(null); // {mi, lkey, turno}
+  const [editVal,  setEditVal]  = useState("");
+  const saveCell = () => {
+    if(!editCell) return;
+    const {mi,lkey,turno} = editCell;
+    doSave(datos.map((d,i)=>i!==mi?d:{...d,[lkey]:{...(d[lkey]||{t1:0,t2:0}),[turno]:+editVal}}));
+    setEditCell(null);
+  };
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -2245,12 +2616,14 @@ function ModuloVentas({isAdmin}) {
       {/* Tabs */}
       <div style={{display:"flex",gap:8,alignItems:"center",justifyContent:"space-between"}}>
         <div style={{display:"flex",gap:8}}>
-          <TabBtn active={tab==="locales"} onClick={()=>setTab("locales")}>🏪 Locales propios</TabBtn>
+          <TabBtn active={tab==="cierres"} onClick={()=>setTab("cierres")} color={C.green}>💰 Cierres de caja</TabBtn>
+          <TabBtn active={tab==="vendidos"} onClick={()=>setTab("vendidos")} color={C.blue}>📦 Mercadería vendida</TabBtn>
+          <TabBtn active={tab==="locales"} onClick={()=>setTab("locales")}>📊 Ventas por local</TabBtn>
           <TabBtn active={tab==="mayorista"} onClick={()=>setTab("mayorista")} color={C.orange}>🏭 Venta mayorista</TabBtn>
         </div>
-        {isAdmin&&(
+        {isAdmin&&tab==="locales"&&(
           <button onClick={()=>setShowPeriodos(!showPeriodos)}
-            style={{background:showPeriodos?"#dbeafe":C.bg,color:showPeriodos?C.blue:C.textSub,
+            style={{background:showPeriodos?"#dbeafe":"transparent",color:showPeriodos?C.blue:C.textSub,
               border:`1px solid ${showPeriodos?C.blue:C.border}`,borderRadius:8,
               padding:"6px 14px",fontFamily:"'Inter',sans-serif",fontWeight:500,fontSize:12,cursor:"pointer"}}>
             📅 Gestionar períodos
@@ -2258,59 +2631,322 @@ function ModuloVentas({isAdmin}) {
         )}
       </div>
 
-      {/* Panel gestión de períodos */}
-      {isAdmin&&showPeriodos&&(
-        <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,padding:"16px"}}>
-          <div style={{fontWeight:700,fontSize:13,color:C.blue,marginBottom:12}}>Gestión de Períodos de Venta</div>
-          <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
-            {/* Períodos activos */}
-            <div style={{flex:1,minWidth:240}}>
-              <div style={{fontSize:11,color:C.textSub,marginBottom:8,fontWeight:600}}>Períodos activos ({datos.length})</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {datos.map(d=>(
-                  <div key={d.mes} style={{display:"flex",alignItems:"center",gap:4,
-                    background:"#fff",border:"1px solid #bfdbfe",borderRadius:7,
-                    padding:"4px 10px",fontSize:12,fontWeight:600,color:C.blue}}>
-                    {d.mes}
-                    <button onClick={()=>eliminarPeriodo(d.mes)}
-                      style={{background:"transparent",border:"none",color:C.red,
-                        cursor:"pointer",fontSize:14,lineHeight:1,opacity:.6,padding:"0 2px"}}
-                      title="Archivar período">×</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-            {/* Agregar período */}
-            <div style={{flex:1,minWidth:240}}>
-              <div style={{fontSize:11,color:C.textSub,marginBottom:8,fontWeight:600}}>Agregar período</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {mesesDisponibles.map(m=>(
-                  <button key={m} onClick={()=>agregarPeriodo(m)}
-                    style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:7,
-                      padding:"4px 12px",fontSize:12,color:C.textSub,cursor:"pointer",
-                      fontFamily:"'Inter',sans-serif",fontWeight:500,
-                      transition:"all .15s"}}
-                    onMouseEnter={e=>{e.currentTarget.style.background="#dbeafe";e.currentTarget.style.color=C.blue;e.currentTarget.style.borderColor=C.blue;}}
-                    onMouseLeave={e=>{e.currentTarget.style.background="#fff";e.currentTarget.style.color=C.textSub;e.currentTarget.style.borderColor="#e2e8f0";}}>
-                    + {m}
-                  </button>
-                ))}
-                {mesesDisponibles.length===0&&(
-                  <span style={{fontSize:11,color:C.muted}}>Todos los meses del año están activos</span>
-                )}
-              </div>
-            </div>
+      {/* ── CIERRES DE CAJA ── */}
+      {tab==="cierres"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
+            <KPI label="Total histórico" value={fmt(totalCierres)} sub="Suma de todos los cierres"/>
+            <KPI label="Recaudado hoy" value={fmt(totalHoy)} sub={`${cierresHoy.length} cierre${cierresHoy.length!==1?"s":""} hoy`} color={C.green}/>
+            <KPI label="Cierre 7hs hoy" value={fmt(cierresHoy.filter(c=>c.turno==="7hs").reduce((a,c)=>a+c.monto,0))} sub="Turno mañana" color={C.blue}/>
+            <KPI label="Cierre 19hs hoy" value={fmt(cierresHoy.filter(c=>c.turno==="19hs").reduce((a,c)=>a+c.monto,0))} sub="Turno tarde" color={C.purple}/>
           </div>
-          <div style={{marginTop:12,padding:"10px 14px",background:"#fff",borderRadius:8,
-            fontSize:11,color:C.textSub,border:"1px solid #bfdbfe"}}>
-            💡 Los datos de cada período se conservan aunque lo archives. Podés volver a agregarlo en cualquier momento.
+
+          {/* Form nuevo cierre */}
+          {isAdmin&&(
+            <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"14px 18px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                <div style={{fontWeight:700,fontSize:13,color:"#15803d"}}>Registrar cierre de caja</div>
+                <button onClick={()=>setShowNuevoCierre(!showNuevoCierre)}
+                  style={{background:C.green,color:"#fff",border:"none",borderRadius:7,
+                    padding:"6px 14px",fontFamily:"'Inter',sans-serif",fontWeight:600,fontSize:12,cursor:"pointer"}}>
+                  {showNuevoCierre?"Cancelar":"+ Nuevo cierre"}
+                </button>
+              </div>
+              {showNuevoCierre&&(
+                <div style={{display:"flex",gap:12,alignItems:"flex-end",flexWrap:"wrap"}}>
+                  <div>
+                    <div style={{fontSize:9,color:"#15803d",...dm,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Fecha</div>
+                    <input type="date" style={{...inp,background:"#fff"}} value={formCierre.fecha}
+                      onChange={e=>setFormCierre(f=>({...f,fecha:e.target.value}))}/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:9,color:"#15803d",...dm,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Local</div>
+                    <select style={{...inp,background:"#fff"}} value={formCierre.local}
+                      onChange={e=>setFormCierre(f=>({...f,local:e.target.value}))}>
+                      {LOCALES.map(l=><option key={l}>{l}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{fontSize:9,color:"#15803d",...dm,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Turno</div>
+                    <select style={{...inp,background:"#fff"}} value={formCierre.turno}
+                      onChange={e=>setFormCierre(f=>({...f,turno:e.target.value}))}>
+                      {TURNOS.map(t=><option key={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{fontSize:9,color:"#15803d",...dm,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Monto ($)</div>
+                    <input type="number" style={{...inp,background:"#fff",width:140}} value={formCierre.monto}
+                      placeholder="0"
+                      onChange={e=>setFormCierre(f=>({...f,monto:e.target.value}))}
+                      onKeyDown={e=>e.key==="Enter"&&agregarCierre()}/>
+                  </div>
+                  <button onClick={agregarCierre}
+                    style={{background:C.green,border:"none",borderRadius:8,padding:"9px 20px",
+                      color:"#fff",cursor:"pointer",fontFamily:"'Inter',sans-serif",fontWeight:700,fontSize:13}}>
+                    ✓ Registrar
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tabla de cierres */}
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
+              <span style={{fontWeight:700,fontSize:14,color:C.text}}>Historial de cierres</span>
+              <PDFBtn onClick={()=>exportPDF("Cierres de Caja",
+                cierres.map(c=>({fecha:c.fecha,local:c.local,turno:c.turno,monto:fmt(c.monto)})),
+                [{key:"fecha",label:"Fecha"},{key:"local",label:"Local"},{key:"turno",label:"Turno"},{key:"monto",label:"Monto"}])}/>
+            </div>
+            {cierres.length===0
+              ? <div style={{padding:"36px",textAlign:"center",color:C.muted,...dm,fontSize:11}}>
+                  Sin cierres registrados. Empezá cargando el cierre del día.
+                </div>
+              : <div style={{maxHeight:460,overflowY:"auto"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse"}}>
+                    <thead style={{position:"sticky",top:0,background:"#f8fafc",zIndex:2}}>
+                      <tr><Th>Fecha</Th><Th>Local</Th><Th>Turno</Th><Th>Monto</Th>{isAdmin&&<Th></Th>}</tr>
+                    </thead>
+                    <tbody>
+                      {cierres.map(c=>(
+                        <tr key={c.id} {...rh}>
+                          <Td style={{...dm,fontSize:11,color:C.textSub}}>{c.fecha}</Td>
+                          <Td><strong>{c.local}</strong></Td>
+                          <Td><Badge color={c.turno==="7hs"?C.blue:C.purple}>{c.turno}</Badge></Td>
+                          <Td style={{...dm,fontWeight:700,fontSize:14,color:C.green}}>{fmt(c.monto)}</Td>
+                          {isAdmin&&<Td>
+                            <button onClick={()=>saveCierre(cierres.filter(x=>x.id!==c.id))}
+                              style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:13,opacity:.4}}>×</button>
+                          </Td>}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>}
+          </div>
+
+          {/* Mini resumen por local */}
+          {cierres.length>0&&(
+            <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:9}}>
+              {LOCALES.map((l,i)=>{
+                const total = cierres.filter(c=>c.local===l).reduce((a,c)=>a+c.monto,0);
+                const hoyL  = cierres.filter(c=>c.local===l&&c.fecha===new Date().toISOString().slice(0,10)).reduce((a,c)=>a+c.monto,0);
+                return (
+                  <div key={l} style={{background:C.card,border:`1px solid ${C.border}`,
+                    borderTop:`3px solid ${COLORS[i]}`,borderRadius:8,padding:"12px",
+                    boxShadow:C.shadow}}>
+                    <div style={{color:C.textSub,fontSize:9,...dm,marginBottom:3}}>{l}</div>
+                    <div style={{color:COLORS[i],fontSize:13,fontWeight:700,...dm}}>{total>0?fmt(total):"—"}</div>
+                    <div style={{color:C.muted,fontSize:9,marginTop:2}}>Hoy: {hoyL>0?fmt(hoyL):"—"}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── MERCADERÍA VENDIDA ── */}
+      {tab==="vendidos"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
+            <KPI label="Registros de ventas" value={vendidos.length.toString()} sub="Mercadería saliente por venta"/>
+            <KPI label="Registros hoy" value={vendidos.filter(v=>v.fecha===new Date().toISOString().slice(0,10)).length.toString()} sub="Del día" color={C.blue}/>
+            <KPI label="Unidades totales vendidas" value={vendidos.reduce((a,v)=>a+v.items.reduce((b,i)=>b+i.cantidad,0),0).toString()} sub="Histórico" color={C.green}/>
+          </div>
+
+          {isAdmin&&(
+            <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,padding:"14px 18px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:showNuevoVendido?12:0}}>
+                <div style={{fontWeight:700,fontSize:13,color:C.blue}}>Registrar mercadería vendida</div>
+                <button onClick={()=>setShowNuevoVendido(!showNuevoVendido)}
+                  style={{background:C.blue,color:"#fff",border:"none",borderRadius:7,
+                    padding:"6px 14px",fontFamily:"'Inter',sans-serif",fontWeight:600,fontSize:12,cursor:"pointer"}}>
+                  {showNuevoVendido?"Cancelar":"+ Cargar venta"}
+                </button>
+              </div>
+
+              {showNuevoVendido&&(
+                <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                  <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                    {[["Fecha","fecha","date"],["Local","local","select"],["Turno","turno","select"]].map(([l,k,t])=>(
+                      <div key={k}>
+                        <div style={{fontSize:9,color:C.blue,...dm,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>{l}</div>
+                        {t==="select"
+                          ? <select style={{...inp,background:"#fff"}} value={formVend[k]}
+                              onChange={e=>setFormVend(f=>({...f,[k]:e.target.value}))}>
+                              {(k==="local"?LOCALES:TURNOS).map(o=><option key={o}>{o}</option>)}
+                            </select>
+                          : <input type={t} style={{...inp,background:"#fff"}} value={formVend[k]}
+                              onChange={e=>setFormVend(f=>({...f,[k]:e.target.value}))}/>}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                    {/* Buscador */}
+                    <div style={{background:"#fff",border:"1px solid #bfdbfe",borderRadius:9,overflow:"hidden"}}>
+                      <div style={{padding:"10px 14px",borderBottom:"1px solid #bfdbfe",background:"#f0f9ff"}}>
+                        <div style={{fontWeight:600,fontSize:12,color:C.blue,marginBottom:7}}>Buscá los productos vendidos</div>
+                        <input value={vendQ} onChange={e=>setVendQ(e.target.value)}
+                          placeholder="🔍 Buscar producto…"
+                          style={{...inp,width:"100%",boxSizing:"border-box",background:"#fff"}}/>
+                      </div>
+                      <div style={{maxHeight:280,overflowY:"auto"}}>
+                        {stockFiltrado.map(s=>{
+                          const en = formVend.items.find(i=>i.stockId===s.id);
+                          return (
+                            <div key={s.id} style={{display:"flex",alignItems:"center",gap:8,
+                              padding:"8px 12px",borderBottom:"1px solid #f0f9ff",
+                              background:en?"#eff6ff":"#fff",transition:"background .12s"}}
+                              onMouseEnter={e=>{if(!en)e.currentTarget.style.background="#f8fafc";}}
+                              onMouseLeave={e=>{if(!en)e.currentTarget.style.background=en?"#eff6ff":"#fff";}}>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontWeight:600,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.producto}</div>
+                                {en&&<Badge color={C.blue}>✓ {en.cantidad} cargados</Badge>}
+                              </div>
+                              <input type="number" min="1" defaultValue={1} id={`vend-${s.id}`}
+                                style={{...inp,width:50,padding:"3px 6px",fontSize:11,textAlign:"center",background:"#fff"}}/>
+                              <button onClick={()=>{
+                                  const el=document.getElementById(`vend-${s.id}`);
+                                  addVendItem(s,el?el.value:1);
+                                }}
+                                style={{background:en?C.blue:C.green,border:"none",borderRadius:6,
+                                  padding:"4px 10px",color:"#fff",cursor:"pointer",
+                                  fontSize:11,fontFamily:"'Inter',sans-serif",fontWeight:600}}>
+                                {en?"+":"Agregar"}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Items cargados */}
+                    <div style={{background:"#fff",border:"1px solid #bfdbfe",borderRadius:9,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+                      <div style={{padding:"10px 14px",borderBottom:"1px solid #bfdbfe",background:"#f0f9ff",
+                        display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <span style={{fontWeight:600,fontSize:12,color:C.blue}}>Productos cargados</span>
+                        <Badge color={C.blue}>{formVend.items.length}</Badge>
+                      </div>
+                      {formVend.items.length===0
+                        ? <div style={{padding:"24px",textAlign:"center",color:C.muted,fontSize:12}}>
+                            Agregá los productos vendidos en este turno
+                          </div>
+                        : <>
+                            <div style={{flex:1,overflowY:"auto",maxHeight:230}}>
+                              {formVend.items.map((it,i)=>(
+                                <div key={i} style={{display:"flex",alignItems:"center",gap:8,
+                                  padding:"8px 12px",borderBottom:"1px solid #f0f9ff"}}>
+                                  <div style={{flex:1}}>
+                                    <div style={{fontWeight:600,fontSize:12}}>{it.producto}</div>
+                                    <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}>
+                                      <input type="number" min="1" value={it.cantidad}
+                                        onChange={e=>setFormVend(f=>({...f,items:f.items.map((x,j)=>j===i?{...x,cantidad:Math.max(1,+e.target.value)}:x)}))}
+                                        style={{...inp,width:55,padding:"2px 6px",fontSize:12,background:"#fff"}}/>
+                                      <span style={{fontSize:11,color:C.textSub}}>{it.unidad}</span>
+                                    </div>
+                                  </div>
+                                  <button onClick={()=>setFormVend(f=>({...f,items:f.items.filter((_,j)=>j!==i)}))}
+                                    style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:14}}>×</button>
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{padding:"12px 14px",borderTop:"1px solid #bfdbfe"}}>
+                              <button onClick={confirmarVendido}
+                                style={{width:"100%",background:C.blue,color:"#fff",border:"none",borderRadius:8,
+                                  padding:"10px",fontFamily:"'Inter',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                                ✓ Registrar venta ({formVend.local} · {formVend.turno})
+                              </button>
+                            </div>
+                          </>}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Historial mercadería vendida */}
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+            <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontWeight:700,fontSize:14,color:C.text}}>Historial de ventas registradas</span>
+            </div>
+            {vendidos.length===0
+              ? <div style={{padding:"36px",textAlign:"center",color:C.muted,...dm,fontSize:11}}>Sin registros de ventas aún.</div>
+              : <div style={{maxHeight:400,overflowY:"auto"}}>
+                  {vendidos.map(v=>(
+                    <div key={v.id} style={{borderBottom:`1px solid ${C.border}`,padding:"10px 16px",
+                      transition:"background .12s"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <strong style={{fontSize:13}}>{v.local}</strong>
+                          <Badge color={v.turno==="7hs"?C.blue:C.purple}>{v.turno}</Badge>
+                          <span style={{...dm,fontSize:10,color:C.muted}}>{v.fecha}</span>
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <Badge color={C.green}>{v.items.reduce((a,i)=>a+i.cantidad,0)} u. vendidas</Badge>
+                          {isAdmin&&<button onClick={()=>saveVend(vendidos.filter(x=>x.id!==v.id))}
+                            style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:13,opacity:.4}}>×</button>}
+                        </div>
+                      </div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                        {v.items.map((it,i)=>(
+                          <span key={i} style={{background:"#f0f9ff",border:"1px solid #bfdbfe",
+                            borderRadius:5,padding:"2px 9px",fontSize:11,...dm}}>
+                            {it.producto} <span style={{color:C.blue,fontWeight:700}}>{it.cantidad} {it.unidad}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>}
           </div>
         </div>
       )}
 
-      {/* ── TAB LOCALES ── */}
+      {/* ── VENTAS POR LOCAL (tabla manual por período) ── */}
       {tab==="locales"&&(
         <>
+          {isAdmin&&showPeriodos&&(
+            <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,padding:"16px"}}>
+              <div style={{fontWeight:700,fontSize:13,color:C.blue,marginBottom:12}}>Gestión de Períodos</div>
+              <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+                <div style={{flex:1,minWidth:200}}>
+                  <div style={{fontSize:11,color:C.textSub,marginBottom:8,fontWeight:600}}>Períodos activos</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                    {datos.map(d=>(
+                      <div key={d.mes} style={{display:"flex",alignItems:"center",gap:4,
+                        background:"#fff",border:"1px solid #bfdbfe",borderRadius:7,
+                        padding:"4px 10px",fontSize:12,fontWeight:600,color:C.blue}}>
+                        {d.mes}
+                        <button onClick={()=>eliminarPeriodo(d.mes)}
+                          style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:14,opacity:.6,padding:"0 2px"}}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div style={{flex:1,minWidth:200}}>
+                  <div style={{fontSize:11,color:C.textSub,marginBottom:8,fontWeight:600}}>Agregar período</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                    {mesesDisponibles.map(m=>(
+                      <button key={m} onClick={()=>agregarPeriodo(m)}
+                        style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:7,
+                          padding:"4px 12px",fontSize:12,color:C.textSub,cursor:"pointer",
+                          fontFamily:"'Inter',sans-serif",fontWeight:500}}
+                        onMouseEnter={e=>{e.currentTarget.style.background="#dbeafe";e.currentTarget.style.color=C.blue;}}
+                        onMouseLeave={e=>{e.currentTarget.style.background="#fff";e.currentTarget.style.color=C.textSub;}}>
+                        + {m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
             <KPI label={`Ventas ${nPeriodos} períodos`} value={tieneData?fmt(totGen):"Sin datos"} sub="Suma todos los locales"/>
             <KPI label="Mejor local" value={tieneData?LOCALES[mejorIdx]:"—"} sub={tieneData?fmt(totLocal(LKEYS[mejorIdx])):"Cargá ventas"} color={C.green}/>
@@ -2318,80 +2954,71 @@ function ModuloVentas({isAdmin}) {
             <KPI label="Períodos activos" value={nPeriodos.toString()} sub={datos.map(d=>d.mes).join(" · ")} color={C.purple}/>
           </div>
 
-          {/* Mini tarjetas por local */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:9}}>
-            {LOCALES.map((l,i)=>(
-              <div key={l} style={{background:C.card,border:`1px solid ${C.border}`,
-                borderTop:`3px solid ${COLORS[i]}`,borderRadius:7,padding:"11px",
-                boxShadow:C.shadow}}>
-                <div style={{color:C.textSub,fontSize:9,fontFamily:"'DM Mono',monospace",marginBottom:2}}>{l}</div>
-                <div style={{color:COLORS[i],fontSize:13,fontFamily:"'Syne',sans-serif",fontWeight:700}}>
-                  {tieneData?fmt(totLocal(LKEYS[i])):"—"}
-                </div>
-                <div style={{color:C.muted,fontSize:9,marginTop:2}}>{nPeriodos} {nPeriodos===1?"mes":"meses"}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Tabla y gráficos */}
-          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",boxShadow:C.shadow}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
-              padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14}}>Ventas por Local</span>
-                {isAdmin&&<Saved show={saved}/>}
+                <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14}}>Ventas por Local y Turno</span>
+                <Saved show={saved}/>
               </div>
               <div style={{display:"flex",gap:8}}>
-                <PDFBtn onClick={()=>exportPDF("Ventas por Local",datos.map(d=>({mes:d.mes,
-                  ...Object.fromEntries(LKEYS.map((k,i)=>[LOCALES[i],d[k]?fmt(d[k]):"—"])),
-                  total:fmt(LKEYS.reduce((a,k)=>a+d[k],0))})),
+                <PDFBtn onClick={()=>exportPDF("Ventas por Local",
+                  datos.map(d=>({mes:d.mes,
+                    ...Object.fromEntries(LKEYS.map((k,i)=>[LOCALES[i], ((d[k]?.t1||0)+(d[k]?.t2||0))>0?fmt((d[k]?.t1||0)+(d[k]?.t2||0)):"—"])),
+                    total:fmt(LKEYS.reduce((a,k)=>a+(d[k]?.t1||0)+(d[k]?.t2||0),0))})),
                   [{key:"mes",label:"Mes"},...LOCALES.map(l=>({key:l,label:l})),{key:"total",label:"Total"}])}/>
-                {[["Barras","barras"],["Líneas","lineas"],["Distribución","torta"]].map(([l,v])=>(
+                {[["Barras","barras"],["Líneas","lineas"]].map(([l,v])=>(
                   <TabBtn key={v} active={vista===v} onClick={()=>setVista(v)}>{l}</TabBtn>
                 ))}
               </div>
             </div>
             <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",minWidth:640}}>
-                <thead><tr>
-                  <Th>Período</Th>
-                  {LOCALES.map((l,i)=><Th key={l} style={{color:COLORS[i]}}>{l}</Th>)}
-                  <Th>Total</Th>
-                  {isAdmin&&<Th></Th>}
-                </tr></thead>
+              <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
+                <thead>
+                  <tr>
+                    <Th rowSpan={2}>Mes</Th>
+                    {LOCALES.map((l,i)=>(
+                      <Th key={l} colSpan={2} style={{color:COLORS[i],textAlign:"center",borderBottom:"none"}}>{l}</Th>
+                    ))}
+                    <Th rowSpan={2}>Total mes</Th>
+                  </tr>
+                  <tr>
+                    {LOCALES.map(l=>(
+                      ["7hs","19hs"].map(t=>(
+                        <Th key={l+t} style={{fontSize:8,color:C.muted,borderTop:`1px solid ${C.border}`}}>{t}</Th>
+                      ))
+                    ))}
+                  </tr>
+                </thead>
                 <tbody>
                   {datos.map((d,mi)=>{
-                    const rowTotal=LKEYS.reduce((a,k)=>a+d[k],0);
+                    const rowTotal = LKEYS.reduce((a,k)=>a+(d[k]?.t1||0)+(d[k]?.t2||0),0);
                     return (
                       <tr key={d.mes} {...rh}>
-                        <Td style={{fontFamily:"'DM Mono',monospace",color:C.accent,fontWeight:600}}>{d.mes}</Td>
+                        <Td style={{...dm,color:C.accent,fontWeight:600}}>{d.mes}</Td>
                         {LKEYS.map((k,i)=>(
-                          <Td key={k}>
-                            {isAdmin&&editCell&&editCell[0]===mi&&editCell[1]===k
-                              ? <span style={{display:"flex",gap:4,alignItems:"center"}}>
-                                  <input type="number" value={editVal} onChange={e=>setEditVal(e.target.value)}
-                                    style={{...inp,width:90,padding:"2px 6px"}}/>
-                                  <SmBtn onClick={()=>saveCell(mi,k)}>✓</SmBtn>
-                                </span>
-                              : <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,
-                                  color:d[k]===0?C.muted:COLORS[i],
-                                  cursor:isAdmin?"pointer":"default"}}
-                                  onClick={()=>isAdmin&&(setEditCell([mi,k]),setEditVal(d[k]))}>
-                                  {d[k]===0?(isAdmin?"— clic":"-"):fmt(d[k])}
-                                </span>}
-                          </Td>
+                          ["t1","t2"].map((turno,ti)=>{
+                            const val = d[k]?.[turno]||0;
+                            const isEditing = editCell&&editCell.mi===mi&&editCell.lkey===k&&editCell.turno===turno;
+                            return (
+                              <Td key={k+turno}>
+                                {isAdmin&&isEditing
+                                  ? <span style={{display:"flex",gap:4,alignItems:"center"}}>
+                                      <input type="number" autoFocus value={editVal}
+                                        onChange={e=>setEditVal(e.target.value)}
+                                        onKeyDown={e=>e.key==="Enter"&&saveCell()}
+                                        style={{...inp,width:85,padding:"2px 6px",fontSize:11,background:"#fff"}}/>
+                                      <SmBtn onClick={saveCell}>✓</SmBtn>
+                                    </span>
+                                  : <span style={{...dm,fontSize:11,color:val===0?C.muted:COLORS[i],
+                                      cursor:isAdmin?"pointer":"default"}}
+                                      onClick={()=>isAdmin&&(setEditCell({mi,lkey:k,turno}),setEditVal(val))}>
+                                      {val===0?(isAdmin?"—":"—"):fmt(val)}
+                                    </span>}
+                              </Td>
+                            );
+                          })
                         ))}
-                        <Td style={{fontFamily:"'DM Mono',monospace",fontWeight:700}}>
-                          {rowTotal===0?"—":fmt(rowTotal)}
-                        </Td>
-                        {isAdmin&&(
-                          <Td>
-                            <button onClick={()=>eliminarPeriodo(d.mes)}
-                              style={{background:"transparent",border:"none",color:C.muted,
-                                cursor:"pointer",fontSize:11,opacity:.5}}
-                              title="Archivar período">×</button>
-                          </Td>
-                        )}
+                        <Td style={{...dm,fontWeight:700,color:C.text}}>{rowTotal===0?"—":fmt(rowTotal)}</Td>
                       </tr>
                     );
                   })}
@@ -2400,43 +3027,34 @@ function ModuloVentas({isAdmin}) {
             </div>
             <div style={{padding:"14px 16px",borderTop:`1px solid ${C.border}`}}>
               {!tieneData
-                ? <div style={{color:C.textSub,fontSize:11,fontFamily:"'DM Mono',monospace",textAlign:"center"}}>
-                    {isAdmin?"💡 Hacé clic en cualquier celda para cargar ventas. Usá \"Gestionar períodos\" para agregar meses.":"Sin datos cargados aún."}
+                ? <div style={{color:C.textSub,fontSize:11,...dm,textAlign:"center"}}>
+                    {isAdmin?"💡 Hacé clic en cualquier celda para cargar las ventas del turno.":"Sin datos cargados aún."}
                   </div>
-                : <ResponsiveContainer width="100%" height={260}>
+                : <ResponsiveContainer width="100%" height={240}>
                     {vista==="barras"
-                      ? <BarChart data={datos} barSize={10} barCategoryGap="22%">
+                      ? <BarChart data={datos.map(d=>({mes:d.mes,...Object.fromEntries(LKEYS.map(k=>[k,(d[k]?.t1||0)+(d[k]?.t2||0)]))}))} barSize={10} barCategoryGap="22%">
                           <CartesianGrid strokeDasharray="3 3" stroke={C.border}/>
                           <XAxis dataKey="mes" tick={{fill:C.textSub,fontSize:10}} axisLine={false} tickLine={false}/>
                           <YAxis tick={{fill:C.textSub,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>"$"+Math.round(v/1000)+"k"}/>
-                          <Tooltip formatter={(v,n)=>[fmt(v),n]} contentStyle={{background:"#ffffff",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,.1)"}}/>
+                          <Tooltip formatter={(v,n)=>[fmt(v),n]} contentStyle={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:8}}/>
                           <Legend wrapperStyle={{fontFamily:"'DM Mono',monospace",fontSize:10}}/>
                           {LKEYS.map((k,i)=><Bar key={k} dataKey={k} name={LOCALES[i]} fill={COLORS[i]} radius={[3,3,0,0]}/>)}
                         </BarChart>
-                      : vista==="lineas"
-                      ? <LineChart data={datos}>
+                      : <LineChart data={datos.map(d=>({mes:d.mes,...Object.fromEntries(LKEYS.map(k=>[k,(d[k]?.t1||0)+(d[k]?.t2||0)]))}))}>
                           <CartesianGrid strokeDasharray="3 3" stroke={C.border}/>
                           <XAxis dataKey="mes" tick={{fill:C.textSub,fontSize:10}} axisLine={false} tickLine={false}/>
                           <YAxis tick={{fill:C.textSub,fontSize:9}} axisLine={false} tickLine={false} tickFormatter={v=>"$"+Math.round(v/1000)+"k"}/>
-                          <Tooltip formatter={(v,n)=>[fmt(v),n]} contentStyle={{background:"#ffffff",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,.1)"}}/>
+                          <Tooltip formatter={(v,n)=>[fmt(v),n]} contentStyle={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:8}}/>
                           <Legend wrapperStyle={{fontFamily:"'DM Mono',monospace",fontSize:10}}/>
                           {LKEYS.map((k,i)=><Line key={k} type="monotone" dataKey={k} name={LOCALES[i]} stroke={COLORS[i]} strokeWidth={2} dot={{r:3}}/>)}
-                        </LineChart>
-                      : <PieChart>
-                          <Pie data={LOCALES.map((l,i)=>({name:l,value:totLocal(LKEYS[i])}))}
-                            cx="50%" cy="50%" outerRadius={100} dataKey="value"
-                            label={({name,percent})=>`${name} ${(percent*100).toFixed(0)}%`} labelLine={false} fontSize={10}>
-                            {LOCALES.map((_,i)=><Cell key={i} fill={COLORS[i]}/>)}
-                          </Pie>
-                          <Tooltip formatter={v=>[fmt(v),"Ventas"]} contentStyle={{background:"#ffffff",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,.1)"}}/>
-                        </PieChart>}
+                        </LineChart>}
                   </ResponsiveContainer>}
             </div>
           </div>
         </>
       )}
 
-      {/* ── TAB MAYORISTA ── */}
+      {/* ── MAYORISTA ── */}
       {tab==="mayorista"&&(
         <>
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
@@ -2444,51 +3062,49 @@ function ModuloVentas({isAdmin}) {
             <KPI label="Pedidos externos" value={pedExt.length.toString()} sub="Total histórico" color={C.blue}/>
             <KPI label="Unidades despachadas" value={cliList.reduce((a,c)=>a+c.unidades,0).toString()} sub="A clientes externos" color={C.green}/>
           </div>
-          <div style={{background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:8,
-            padding:"10px 14px",display:"flex",gap:10,alignItems:"center"}}>
+          <div style={{background:"#fffbeb",border:`1px solid #fde68a`,borderRadius:8,padding:"10px 14px",display:"flex",gap:10,alignItems:"center"}}>
             <span>💡</span>
             <span style={{color:C.textSub,fontSize:11}}>
-              Los clientes mayoristas se cargan automáticamente desde <strong>Pedidos → Cliente externo</strong>.
-              Cada cliente puede tener su propio precio en <strong>Costos → Precios por cliente</strong>.
+              Los clientes mayoristas se cargan en el módulo <strong style={{color:C.accent}}>Pedidos</strong> eligiendo tipo "Cliente externo".
             </span>
           </div>
-          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",boxShadow:C.shadow}}>
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
               <span style={{color:C.text,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:14}}>Resumen por Cliente</span>
               <PDFBtn onClick={()=>exportPDF("Venta Mayorista",cliList.map(c=>({nombre:c.nombre,pedidos:c.pedidos.toString(),unidades:c.unidades.toString()})),
                 [{key:"nombre",label:"Cliente"},{key:"pedidos",label:"Pedidos"},{key:"unidades",label:"Unidades"}])}/>
             </div>
             {cliList.length===0
-              ? <div style={{padding:"40px",textAlign:"center",color:C.muted,fontFamily:"'DM Mono',monospace",fontSize:11}}>
-                  Sin clientes mayoristas aún.<br/>Cargá pedidos de tipo "Cliente externo" en el módulo Pedidos.
+              ? <div style={{padding:"36px",textAlign:"center",color:C.muted,...dm,fontSize:11}}>
+                  Sin clientes mayoristas aún.
                 </div>
               : <>
                   <table style={{width:"100%",borderCollapse:"collapse"}}>
                     <thead><tr><Th>Cliente</Th><Th>Pedidos</Th><Th>Unidades despachadas</Th><Th>Último pedido</Th></tr></thead>
                     <tbody>
                       {cliList.map((c,i)=>{
-                        const ult = pedExt.filter(p=>(p.nombreMostrar||p.destino)===c.nombre).sort((a,b)=>b.id-a.id)[0];
+                        const ult=pedExt.filter(p=>(p.nombreMostrar||p.destino)===c.nombre).sort((a,b)=>b.id-a.id)[0];
                         return (
                           <tr key={c.nombre} {...rh}>
                             <Td><span style={{display:"flex",alignItems:"center",gap:8}}>
                               <span style={{width:8,height:8,borderRadius:"50%",background:COLORS[i%COLORS.length],display:"inline-block"}}/>
                               <strong>{c.nombre}</strong>
                             </span></Td>
-                            <Td style={{fontFamily:"'DM Mono',monospace",color:C.blue,fontWeight:700}}>{c.pedidos}</Td>
-                            <Td style={{fontFamily:"'DM Mono',monospace",color:C.green,fontWeight:700}}>{c.unidades} u.</Td>
-                            <Td style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:C.muted}}>{ult?.fecha||"—"}</Td>
+                            <Td style={{...dm,color:C.blue,fontWeight:700}}>{c.pedidos}</Td>
+                            <Td style={{...dm,color:C.orange,fontWeight:700}}>{c.unidades} u.</Td>
+                            <Td style={{...dm,fontSize:11,color:C.muted}}>{ult?.fecha||"—"}</Td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
                   <div style={{padding:"14px 16px",borderTop:`1px solid ${C.border}`}}>
-                    <ResponsiveContainer width="100%" height={200}>
+                    <ResponsiveContainer width="100%" height={220}>
                       <BarChart data={cliList} layout="vertical">
                         <CartesianGrid strokeDasharray="3 3" stroke={C.border}/>
                         <XAxis type="number" tick={{fill:C.textSub,fontSize:10}} axisLine={false} tickLine={false}/>
                         <YAxis type="category" dataKey="nombre" width={130} tick={{fill:C.text,fontSize:11}} axisLine={false} tickLine={false}/>
-                        <Tooltip contentStyle={{background:"#ffffff",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,.1)"}}/>
+                        <Tooltip contentStyle={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:8}}/>
                         <Bar dataKey="unidades" name="Unidades" radius={[0,4,4,0]}>
                           {cliList.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
                         </Bar>
