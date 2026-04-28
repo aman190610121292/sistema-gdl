@@ -3118,18 +3118,1021 @@ function ModuloVentas({isAdmin}) {
 }
 
 
+// ── PRECIOS POR CLIENTE ──────────────────────────────────────
+// Data: parrillas-lista-precios = [
+//   { id, nombre, precios: [{stockId, producto, precio, unidad, notas}] }
+// ]
+
+function pdfListaPrecios(cliente) {
+  const fecha = new Date().toLocaleDateString("es-AR",{day:"numeric",month:"long",year:"numeric"});
+  const rows = (cliente.precios||[]).map((p,i)=>`
+    <tr>
+      <td style="font-weight:500">${i+1}. ${p.producto}</td>
+      <td style="text-align:center;color:#64748b;font-size:11px">${p.unidad||"u"}</td>
+      <td style="text-align:right;font-weight:700;font-size:16px;color:#d97706">$${Math.round(p.precio).toLocaleString("es-AR")}</td>
+      <td style="font-size:11px;color:#94a3b8">${p.notas||""}</td>
+    </tr>`).join("");
+
+  const html = `<html><head><title>Lista de Precios — ${cliente.nombre}</title><style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Inter',Arial,sans-serif;padding:36px;color:#1e293b;background:#fff}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;
+      margin-bottom:28px;padding-bottom:20px;border-bottom:3px solid #d97706}
+    .brand{font-size:22px;font-weight:800;color:#d97706;letter-spacing:-0.5px}
+    .brand-sub{font-size:10px;color:#94a3b8;font-family:monospace;margin-top:2px}
+    .client-box{text-align:right}
+    .client-name{font-size:20px;font-weight:700;color:#1e293b}
+    .client-sub{font-size:11px;color:#64748b;margin-top:3px}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    th{padding:10px 14px;text-align:left;font-size:9px;text-transform:uppercase;
+       letter-spacing:1.2px;color:#64748b;border-bottom:2px solid #e2e8f0;
+       background:#f8fafc;font-weight:600}
+    td{padding:12px 14px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:#fefce8}
+    .footer{margin-top:28px;padding-top:14px;border-top:1px solid #e2e8f0;
+      display:flex;justify-content:space-between;font-size:10px;color:#94a3b8}
+    .total-box{background:#fef3c7;border:1px solid #fde68a;border-radius:10px;
+      padding:14px 18px;margin-top:20px;display:flex;justify-content:space-between;align-items:center}
+    @media print{body{padding:20px}}
+  </style></head><body>
+    <div class="header">
+      <div>
+        <div class="brand">🔥 PARRILLAS</div>
+        <div class="brand-sub">costanera sur · sistema de gestión</div>
+      </div>
+      <div class="client-box">
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">Lista de precios para</div>
+        <div class="client-name">${cliente.nombre}</div>
+        <div class="client-sub">Emitida el ${fecha}</div>
+      </div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Producto</th>
+        <th style="text-align:center">Unidad</th>
+        <th style="text-align:right">Precio unitario</th>
+        <th>Observaciones</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${(cliente.precios||[]).length>0?`
+    <div class="total-box">
+      <span style="font-weight:600;color:#92400e">${(cliente.precios||[]).length} productos en esta lista</span>
+      <span style="font-size:11px;color:#b45309">Precios válidos a la fecha de emisión · Sujetos a modificación</span>
+    </div>`:""}
+    <div class="footer">
+      <span>Parrillas Costanera Sur — Lista de precios confidencial</span>
+      <span>Generado el ${new Date().toLocaleString("es-AR")}</span>
+    </div>
+  </body></html>`;
+
+  const w = window.open("","_blank");
+  if(!w) return alert("Permitir ventanas emergentes para imprimir");
+  w.document.write(html); w.document.close();
+  setTimeout(()=>w.print(),500);
+}
+
+function ModuloPrecios({isAdmin}) {
+  const [clientes, setClientes] = useSaved("parrillas-lista-precios", []);
+  const [stock]                 = useSaved("parrillas-stock",          STOCK_INIT);
+  const [productos]             = useSaved("parrillas-productos",      PRODUCTOS_INIT);
+  const [saved, setSaved]       = useState(false);
+  const [tab, setTab]           = useState("clientes");  // clientes | tabla
+  const [clienteSel, setClienteSel] = useState(null);   // id del cliente en detalle
+  const [showNuevoCli, setShowNuevoCli] = useState(false);
+  const [formCli, setFormCli]   = useState({nombre:"", notas:""});
+  const [showAddPrecio, setShowAddPrecio] = useState(false);
+  const [prodQ, setProdQ]       = useState("");
+  const [formPrecio, setFormPrecio] = useState({stockId:"", precio:"", notas:""});
+
+  const doSave = next => { setClientes(next); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+
+  // Todos los productos disponibles (stock + productos propios)
+  const todosProductos = [
+    ...stock.map(s=>({id:"s"+s.id, nombre:s.producto, unidad:s.unidad||"u"})),
+    ...productos.filter(p=>!p.costo_muerto).map(p=>({id:"p"+p.id, nombre:p.producto, unidad:"u"})),
+  ].filter((p,i,arr)=>arr.findIndex(x=>x.nombre===p.nombre)===i)
+   .sort((a,b)=>a.nombre.localeCompare(b.nombre));
+
+  const prodFiltrados = prodQ.trim()===""
+    ? todosProductos
+    : todosProductos.filter(p=>p.nombre.toLowerCase().includes(prodQ.toLowerCase()));
+
+  // Agregar cliente
+  const agregarCliente = () => {
+    if(!formCli.nombre) return;
+    const nuevo = {id:Date.now(), nombre:formCli.nombre, notas:formCli.notas, precios:[]};
+    doSave([...clientes, nuevo]);
+    setFormCli({nombre:"", notas:""});
+    setShowNuevoCli(false);
+    setClienteSel(nuevo.id);
+    setTab("detalle");
+  };
+
+  // Agregar precio a cliente
+  const agregarPrecio = () => {
+    if(!formPrecio.stockId || !formPrecio.precio || +formPrecio.precio<=0) return;
+    const prod = todosProductos.find(p=>p.id===formPrecio.stockId);
+    if(!prod) return;
+    doSave(clientes.map(c=>{
+      if(c.id!==clienteSel) return c;
+      const yaExiste = (c.precios||[]).find(p=>p.stockId===formPrecio.stockId);
+      const nuevoPrecio = {
+        stockId:formPrecio.stockId, producto:prod.nombre,
+        precio:+formPrecio.precio, unidad:prod.unidad, notas:formPrecio.notas
+      };
+      if(yaExiste) return {...c, precios:(c.precios||[]).map(p=>p.stockId===formPrecio.stockId?nuevoPrecio:p)};
+      return {...c, precios:[...(c.precios||[]), nuevoPrecio]};
+    }));
+    setFormPrecio({stockId:"", precio:"", notas:""});
+    setProdQ("");
+    setShowAddPrecio(false);
+  };
+
+  // Editar precio inline
+  const editarPrecio = (clienteId, stockId, nuevoPrecio) => {
+    doSave(clientes.map(c=>c.id!==clienteId?c:{...c,
+      precios:(c.precios||[]).map(p=>p.stockId!==stockId?p:{...p,precio:+nuevoPrecio})}));
+  };
+
+  const eliminarPrecio = (clienteId, stockId) => {
+    doSave(clientes.map(c=>c.id!==clienteId?c:{...c,
+      precios:(c.precios||[]).filter(p=>p.stockId!==stockId)}));
+  };
+
+  const clienteData = clientes.find(c=>c.id===clienteSel);
+  const dm = {fontFamily:"'DM Mono',monospace"};
+
+  // Tabla comparativa: productos × clientes
+  // Solo productos que aparecen en al menos una lista
+  const todosStockIds = [...new Set(clientes.flatMap(c=>(c.precios||[]).map(p=>p.stockId)))];
+  const matrizProductos = todosStockIds.map(sid=>{
+    const nombre = clientes.flatMap(c=>c.precios||[]).find(p=>p.stockId===sid)?.producto||"";
+    const precios = clientes.map(c=>{
+      const p = (c.precios||[]).find(p=>p.stockId===sid);
+      return {clienteId:c.id, precio:p?.precio||null};
+    });
+    return {stockId:sid, nombre, precios};
+  }).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+
+  const [editCell, setEditCell] = useState(null);
+  const [editVal,  setEditVal]  = useState("");
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+
+      {/* KPIs */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
+        <KPI label="Clientes con lista" value={clientes.length.toString()} sub="Precios personalizados"/>
+        <KPI label="Productos en listas" value={todosStockIds.length.toString()} sub="Con precio asignado" color={C.blue}/>
+        <KPI label="Registros totales" value={clientes.reduce((a,c)=>a+(c.precios||[]).length,0).toString()} sub="Producto × cliente" color={C.green}/>
+      </div>
+
+      {/* Tabs + acciones */}
+      <div style={{display:"flex",gap:8,alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{display:"flex",gap:8}}>
+          <TabBtn active={tab==="clientes"||tab==="detalle"} onClick={()=>setTab(clienteSel?"detalle":"clientes")}>
+            👥 Por cliente
+          </TabBtn>
+          <TabBtn active={tab==="tabla"} onClick={()=>setTab("tabla")} color={C.purple}>
+            📊 Tabla comparativa
+          </TabBtn>
+        </div>
+        {isAdmin&&(
+          <button onClick={()=>setShowNuevoCli(!showNuevoCli)}
+            style={{background:C.accent,color:"#fff",border:"none",borderRadius:8,
+              padding:"7px 16px",fontFamily:"'Inter',sans-serif",fontWeight:600,
+              fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+            + Nuevo cliente
+          </button>
+        )}
+      </div>
+
+      {/* Formulario nuevo cliente */}
+      {isAdmin&&showNuevoCli&&(
+        <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"16px"}}>
+          <div style={{fontWeight:600,fontSize:13,color:"#92400e",marginBottom:12}}>Nuevo cliente</div>
+          <div style={{display:"flex",gap:12,alignItems:"flex-end",flexWrap:"wrap"}}>
+            <div style={{flex:2,minWidth:200}}>
+              <div style={{fontSize:9,color:C.textSub,...dm,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Nombre del cliente</div>
+              <input autoFocus style={{...inp,width:"100%"}} value={formCli.nombre}
+                onChange={e=>setFormCli(v=>({...v,nombre:e.target.value}))}
+                onKeyDown={e=>e.key==="Enter"&&agregarCliente()}
+                placeholder="Ej: Restaurante El Sur, Hotel Madero…"/>
+            </div>
+            <div style={{flex:1,minWidth:160}}>
+              <div style={{fontSize:9,color:C.textSub,...dm,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Notas (opcional)</div>
+              <input style={{...inp,width:"100%"}} value={formCli.notas}
+                onChange={e=>setFormCli(v=>({...v,notas:e.target.value}))}
+                placeholder="Condición de pago, etc."/>
+            </div>
+            <button onClick={agregarCliente}
+              style={{background:C.green,border:"none",borderRadius:8,padding:"9px 20px",
+                color:"#fff",cursor:"pointer",fontFamily:"'Inter',sans-serif",fontWeight:700,fontSize:13}}>
+              Guardar
+            </button>
+            <button onClick={()=>setShowNuevoCli(false)}
+              style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 16px",
+                color:C.textSub,cursor:"pointer",fontFamily:"'Inter',sans-serif",fontSize:13}}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── LISTA DE CLIENTES ── */}
+      {(tab==="clientes")&&(
+        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+          <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontWeight:700,fontSize:14,color:C.text}}>Clientes con lista de precios</span>
+              <Saved show={saved}/>
+            </div>
+          </div>
+          {clientes.length===0
+            ? <div style={{padding:"48px",textAlign:"center",color:C.muted,...dm,fontSize:12}}>
+                {isAdmin
+                  ? <><div style={{fontSize:32,marginBottom:12}}>🏷️</div><div>Todavía no hay clientes con lista de precios.</div><div style={{marginTop:6}}>Hacé clic en <strong>+ Nuevo cliente</strong> para empezar.</div></>
+                  : "Sin listas de precios cargadas aún."}
+              </div>
+            : <div>
+                {clientes.map((c,i)=>(
+                  <div key={c.id}
+                    style={{display:"flex",alignItems:"center",padding:"14px 20px",
+                      borderBottom:`1px solid ${C.border}`,transition:"background .12s",cursor:"pointer"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <div style={{width:38,height:38,borderRadius:10,
+                      background:COLORS[i%COLORS.length]+"20",
+                      display:"flex",alignItems:"center",justifyContent:"center",
+                      fontSize:18,marginRight:14,flexShrink:0}}>
+                      🏢
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:700,fontSize:14,color:C.text}}>{c.nombre}</div>
+                      {c.notas&&<div style={{fontSize:11,color:C.textSub,marginTop:2}}>{c.notas}</div>}
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:12}}>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontWeight:700,fontSize:16,...dm,color:COLORS[i%COLORS.length]}}>
+                          {(c.precios||[]).length}
+                        </div>
+                        <div style={{fontSize:9,color:C.muted,...dm}}>productos</div>
+                      </div>
+                      <div style={{display:"flex",gap:6}}>
+                        <button onClick={()=>pdfListaPrecios(c)}
+                          style={{background:"#fef3c7",color:"#92400e",border:"1px solid #fde68a",
+                            borderRadius:7,padding:"5px 12px",fontSize:11,cursor:"pointer",
+                            fontFamily:"'Inter',sans-serif",fontWeight:600,
+                            display:"flex",alignItems:"center",gap:4}}>
+                          📄 PDF
+                        </button>
+                        <button onClick={()=>{setClienteSel(c.id);setTab("detalle");}}
+                          style={{background:C.blue+"15",color:C.blue,border:`1px solid ${C.blue}40`,
+                            borderRadius:7,padding:"5px 12px",fontSize:11,cursor:"pointer",
+                            fontFamily:"'Inter',sans-serif",fontWeight:600}}>
+                          Ver / Editar →
+                        </button>
+                        {isAdmin&&<button onClick={()=>doSave(clientes.filter(x=>x.id!==c.id))}
+                          style={{background:"transparent",border:"none",color:C.red,
+                            cursor:"pointer",fontSize:13,opacity:.4}}>×</button>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>}
+        </div>
+      )}
+
+      {/* ── DETALLE DE CLIENTE ── */}
+      {tab==="detalle"&&clienteData&&(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          {/* Header */}
+          <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,
+            padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{display:"flex",alignItems:"center",gap:12}}>
+              <button onClick={()=>setTab("clientes")}
+                style={{background:"transparent",border:"1px solid #bfdbfe",borderRadius:7,
+                  padding:"5px 10px",color:C.blue,cursor:"pointer",fontSize:12}}>
+                ← Volver
+              </button>
+              <div>
+                <div style={{fontWeight:800,fontSize:18,color:C.blue}}>{clienteData.nombre}</div>
+                {clienteData.notas&&<div style={{fontSize:12,color:"#3b82f6",marginTop:2}}>{clienteData.notas}</div>}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>pdfListaPrecios(clienteData)}
+                style={{background:"#d97706",color:"#fff",border:"none",borderRadius:8,
+                  padding:"8px 16px",fontFamily:"'Inter',sans-serif",fontWeight:600,fontSize:12,cursor:"pointer",
+                  display:"flex",alignItems:"center",gap:6}}>
+                📄 Exportar PDF
+              </button>
+              {isAdmin&&<button onClick={()=>{setShowAddPrecio(!showAddPrecio);setProdQ("");}}
+                style={{background:C.green,color:"#fff",border:"none",borderRadius:8,
+                  padding:"8px 16px",fontFamily:"'Inter',sans-serif",fontWeight:600,fontSize:12,cursor:"pointer"}}>
+                + Agregar producto
+              </button>}
+            </div>
+          </div>
+
+          {/* Formulario agregar precio */}
+          {isAdmin&&showAddPrecio&&(
+            <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"16px"}}>
+              <div style={{fontWeight:600,fontSize:13,color:"#15803d",marginBottom:12}}>Agregar producto a la lista de {clienteData.nombre}</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+                <div>
+                  <div style={{fontSize:9,color:"#15803d",...dm,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Buscar producto</div>
+                  <input value={prodQ} onChange={e=>setProdQ(e.target.value)}
+                    placeholder="🔍 Escribí para buscar…"
+                    style={{...inp,width:"100%",background:"#fff"}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:9,color:"#15803d",...dm,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Precio para este cliente ($)</div>
+                  <input type="number" value={formPrecio.precio}
+                    onChange={e=>setFormPrecio(v=>({...v,precio:e.target.value}))}
+                    placeholder="0" style={{...inp,width:"100%",background:"#fff"}}/>
+                </div>
+              </div>
+              {/* Lista de productos filtrados */}
+              {prodQ.trim()!==""&&(
+                <div style={{background:"#fff",border:"1px solid #bbf7d0",borderRadius:8,
+                  maxHeight:200,overflowY:"auto",marginBottom:12}}>
+                  {prodFiltrados.slice(0,15).map(p=>(
+                    <div key={p.id}
+                      style={{padding:"8px 14px",cursor:"pointer",fontSize:12,
+                        background:formPrecio.stockId===p.id?"#f0fdf4":"transparent",
+                        fontWeight:formPrecio.stockId===p.id?700:400,
+                        borderBottom:"1px solid #f0fdf4",display:"flex",alignItems:"center",gap:8}}
+                      onClick={()=>setFormPrecio(v=>({...v,stockId:p.id}))}>
+                      <span style={{width:18,height:18,borderRadius:4,
+                        background:formPrecio.stockId===p.id?C.green:"#e2e8f0",
+                        display:"flex",alignItems:"center",justifyContent:"center",
+                        fontSize:10,color:"#fff",flexShrink:0}}>
+                        {formPrecio.stockId===p.id?"✓":""}
+                      </span>
+                      {p.nombre}
+                      <span style={{color:C.muted,fontSize:10,...dm,marginLeft:"auto"}}>{p.unidad}</span>
+                    </div>
+                  ))}
+                  {prodFiltrados.length===0&&<div style={{padding:"16px",textAlign:"center",color:C.muted,fontSize:11}}>Sin resultados</div>}
+                </div>
+              )}
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:9,color:"#15803d",...dm,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Observaciones (opcional)</div>
+                  <input value={formPrecio.notas} onChange={e=>setFormPrecio(v=>({...v,notas:e.target.value}))}
+                    placeholder="Ej: precio por caja, mínimo 10 unidades…"
+                    style={{...inp,width:"100%",background:"#fff"}}/>
+                </div>
+                <button onClick={agregarPrecio}
+                  style={{background:C.green,border:"none",borderRadius:8,padding:"9px 20px",
+                    color:"#fff",cursor:"pointer",fontFamily:"'Inter',sans-serif",fontWeight:700,fontSize:13,
+                    whiteSpace:"nowrap",alignSelf:"flex-end"}}>
+                  ✓ Agregar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Tabla de precios del cliente */}
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+            <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontWeight:700,fontSize:14,color:C.text}}>Lista de precios</span>
+                <Saved show={saved}/>
+                <Badge color={C.accent}>{(clienteData.precios||[]).length} productos</Badge>
+              </div>
+            </div>
+            {(clienteData.precios||[]).length===0
+              ? <div style={{padding:"36px",textAlign:"center",color:C.muted,...dm,fontSize:11}}>
+                  {isAdmin?"Hacé clic en \"+ Agregar producto\" para armar la lista de precios.":"Sin precios cargados aún."}
+                </div>
+              : <table style={{width:"100%",borderCollapse:"collapse"}}>
+                  <thead><tr>
+                    <Th>#</Th><Th>Producto</Th><Th>Unidad</Th>
+                    <Th>Precio para {clienteData.nombre}</Th>
+                    <Th>Observaciones</Th>
+                    {isAdmin&&<Th></Th>}
+                  </tr></thead>
+                  <tbody>
+                    {(clienteData.precios||[]).map((p,i)=>{
+                      const isEditing = editCell===p.stockId;
+                      return (
+                        <tr key={p.stockId}
+                          onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+                          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                          <Td style={{...dm,fontSize:11,color:C.muted}}>{i+1}</Td>
+                          <Td><strong style={{fontSize:13}}>{p.producto}</strong></Td>
+                          <Td><Badge color={C.muted}>{p.unidad||"u"}</Badge></Td>
+                          <Td>
+                            {isAdmin&&isEditing
+                              ? <span style={{display:"flex",gap:6,alignItems:"center"}}>
+                                  <input type="number" autoFocus value={editVal}
+                                    onChange={e=>setEditVal(e.target.value)}
+                                    onKeyDown={e=>{
+                                      if(e.key==="Enter"){editarPrecio(clienteData.id,p.stockId,editVal);setEditCell(null);}
+                                      if(e.key==="Escape") setEditCell(null);
+                                    }}
+                                    style={{...inp,width:120,fontWeight:700,fontSize:15,background:"#fff"}}/>
+                                  <SmBtn onClick={()=>{editarPrecio(clienteData.id,p.stockId,editVal);setEditCell(null);}}>✓</SmBtn>
+                                </span>
+                              : <span style={{display:"flex",alignItems:"center",gap:8}}>
+                                  <span style={{...dm,fontWeight:800,fontSize:17,color:C.accent}}>
+                                    ${Math.round(p.precio).toLocaleString("es-AR")}
+                                  </span>
+                                  {isAdmin&&<button onClick={()=>{setEditCell(p.stockId);setEditVal(p.precio);}}
+                                    style={{background:"transparent",border:"none",color:C.muted,
+                                      cursor:"pointer",fontSize:12,opacity:.6}}>✎</button>}
+                                </span>}
+                          </Td>
+                          <Td style={{fontSize:11,color:C.textSub}}>{p.notas||"—"}</Td>
+                          {isAdmin&&<Td>
+                            <button onClick={()=>eliminarPrecio(clienteData.id,p.stockId)}
+                              style={{background:"transparent",border:"none",color:C.red,
+                                cursor:"pointer",fontSize:13,opacity:.4}}>×</button>
+                          </Td>}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>}
+          </div>
+        </div>
+      )}
+
+      {/* ── TABLA COMPARATIVA ── */}
+      {tab==="tabla"&&(
+        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+          <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontWeight:700,fontSize:14,color:C.text}}>Tabla comparativa de precios por cliente</span>
+            <PDFBtn onClick={()=>exportPDF("Comparativa de Precios",
+              matrizProductos.map(r=>({
+                producto:r.nombre,
+                ...Object.fromEntries(clientes.map(c=>[c.nombre,
+                  r.precios.find(p=>p.clienteId===c.id)?.precio
+                    ? "$"+Math.round(r.precios.find(p=>p.clienteId===c.id).precio).toLocaleString("es-AR")
+                    : "—"]))
+              })),
+              [{key:"producto",label:"Producto"},...clientes.map(c=>({key:c.nombre,label:c.nombre}))]
+            )}/>
+          </div>
+          {matrizProductos.length===0||clientes.length===0
+            ? <div style={{padding:"48px",textAlign:"center",color:C.muted,...dm,fontSize:11}}>
+                <div style={{fontSize:32,marginBottom:12}}>📊</div>
+                {clientes.length===0
+                  ? "Primero agregá clientes y sus listas de precios."
+                  : "Sin productos con precios asignados aún."}
+              </div>
+            : <div style={{overflowX:"auto",maxHeight:600,overflowY:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse"}}>
+                  <thead style={{position:"sticky",top:0,zIndex:2}}>
+                    <tr>
+                      <Th>Producto</Th>
+                      {clientes.map((c,i)=>(
+                        <Th key={c.id} style={{color:COLORS[i%COLORS.length],textAlign:"right"}}>
+                          {c.nombre}
+                        </Th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {matrizProductos.map(row=>(
+                      <tr key={row.stockId}
+                        onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+                        onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                        <Td><strong style={{fontSize:12}}>{row.nombre}</strong></Td>
+                        {row.precios.map((p,i)=>(
+                          <Td key={p.clienteId} style={{textAlign:"right"}}>
+                            {p.precio
+                              ? <span style={{...dm,fontWeight:700,fontSize:13,color:COLORS[i%COLORS.length]}}>
+                                  ${Math.round(p.precio).toLocaleString("es-AR")}
+                                </span>
+                              : <span style={{color:C.muted,fontSize:11,...dm}}>—</span>}
+                          </Td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── COBROS ───────────────────────────────────────────────────
+// Genera boletas para clientes externos basándose en sus pedidos
+// y la lista de precios cargada en el módulo Listas precio.
+// cobros guardados: parrillas-cobros = [{id, clienteNombre, desde, hasta, items, total, estado, fecha}]
+
+function generarPDFBoleta(boleta) {
+  const emitida = new Date().toLocaleDateString("es-AR",{day:"numeric",month:"long",year:"numeric"});
+  const periodo = boleta.desde===boleta.hasta
+    ? boleta.desde
+    : `${boleta.desde} al ${boleta.hasta}`;
+
+  const filas = boleta.items.map((it,i)=>`
+    <tr>
+      <td style="font-weight:500;padding:11px 14px;border-bottom:1px solid #f1f5f9">${i+1}. ${it.producto}</td>
+      <td style="text-align:center;padding:11px 14px;border-bottom:1px solid #f1f5f9;color:#64748b">${it.unidad||"u"}</td>
+      <td style="text-align:center;padding:11px 14px;border-bottom:1px solid #f1f5f9;font-weight:700;font-size:15px">${it.cantidad}</td>
+      <td style="text-align:right;padding:11px 14px;border-bottom:1px solid #f1f5f9;color:#64748b">
+        ${it.precioUnitario>0?"$"+Math.round(it.precioUnitario).toLocaleString("es-AR"):"Sin precio"}
+      </td>
+      <td style="text-align:right;padding:11px 14px;border-bottom:1px solid #f1f5f9;font-weight:700;font-size:15px;color:#d97706">
+        ${it.subtotal>0?"$"+Math.round(it.subtotal).toLocaleString("es-AR"):"—"}
+      </td>
+      ${it.sinPrecio?`<td style="padding:11px 14px;border-bottom:1px solid #f1f5f9"><span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">Sin precio cargado</span></td>`:"<td style='border-bottom:1px solid #f1f5f9'></td>"}
+    </tr>`).join("");
+
+  const totalSinPrecio = boleta.items.filter(it=>it.sinPrecio).length;
+
+  const html = `<html><head><title>Boleta — ${boleta.clienteNombre}</title><style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Inter',Arial,sans-serif;padding:36px;color:#1e293b;background:#fff;font-size:13px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;
+      margin-bottom:28px;padding-bottom:20px;border-bottom:3px solid #d97706}
+    .brand{font-size:22px;font-weight:800;color:#d97706}
+    .brand-sub{font-size:10px;color:#94a3b8;font-family:monospace;margin-top:2px}
+    .boleta-info{text-align:right}
+    .boleta-num{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+    .cliente-box{background:#f8fafc;border-radius:10px;padding:16px 20px;margin-bottom:24px;
+      display:flex;justify-content:space-between;align-items:center;border:1px solid #e2e8f0}
+    .cliente-name{font-size:20px;font-weight:800;color:#1e293b}
+    .cliente-sub{font-size:11px;color:#64748b;margin-top:3px}
+    table{width:100%;border-collapse:collapse}
+    thead tr{background:#f8fafc;border-bottom:2px solid #e2e8f0}
+    th{padding:10px 14px;text-align:left;font-size:9px;text-transform:uppercase;
+       letter-spacing:1.2px;color:#64748b;font-weight:700}
+    .total-row{background:#fef3c7;border-top:2px solid #fde68a}
+    .total-row td{padding:14px;font-weight:800;font-size:16px}
+    .warning{background:#fef3c7;border:1px solid #fde68a;border-radius:8px;
+      padding:10px 14px;margin-top:16px;font-size:11px;color:#92400e}
+    .footer{margin-top:28px;padding-top:14px;border-top:1px solid #e2e8f0;
+      display:flex;justify-content:space-between;font-size:10px;color:#94a3b8}
+    .firma-area{display:flex;gap:40px;margin-top:32px}
+    .firma{border-top:1px solid #cbd5e1;padding-top:6px;width:200px;
+      text-align:center;font-size:10px;color:#94a3b8}
+    @media print{body{padding:20px}}
+  </style></head><body>
+    <div class="header">
+      <div>
+        <div class="brand">🔥 PARRILLAS</div>
+        <div class="brand-sub">costanera sur · sistema de gestión</div>
+      </div>
+      <div class="boleta-info">
+        <div class="boleta-num">Boleta de cobro</div>
+        <div style="font-size:18px;font-weight:700;color:#1e293b">Período: ${periodo}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:3px">Emitida el ${emitida}</div>
+      </div>
+    </div>
+
+    <div class="cliente-box">
+      <div>
+        <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Cliente</div>
+        <div class="cliente-name">${boleta.clienteNombre}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:10px;color:#94a3b8;margin-bottom:4px">Total a cobrar</div>
+        <div style="font-size:28px;font-weight:800;color:#d97706">$${Math.round(boleta.total).toLocaleString("es-AR")}</div>
+      </div>
+    </div>
+
+    <table>
+      <thead><tr>
+        <th>Producto</th>
+        <th style="text-align:center">Unidad</th>
+        <th style="text-align:center">Cantidad</th>
+        <th style="text-align:right">Precio unit.</th>
+        <th style="text-align:right">Subtotal</th>
+        <th></th>
+      </tr></thead>
+      <tbody>
+        ${filas}
+        <tr class="total-row">
+          <td colspan="2" style="color:#92400e">TOTAL</td>
+          <td style="text-align:center;color:#92400e">${boleta.items.reduce((a,i)=>a+i.cantidad,0)} u.</td>
+          <td></td>
+          <td style="text-align:right;color:#d97706">$${Math.round(boleta.total).toLocaleString("es-AR")}</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+
+    ${totalSinPrecio>0?`<div class="warning">⚠ ${totalSinPrecio} producto${totalSinPrecio>1?"s":""} sin precio cargado en la lista — no se incluyeron en el total.</div>`:""}
+
+    <div class="firma-area">
+      <div class="firma">Emitido por</div>
+      <div class="firma">Recibido por</div>
+    </div>
+
+    <div class="footer">
+      <span>Parrillas Costanera Sur</span>
+      <span>Generado el ${new Date().toLocaleString("es-AR")}</span>
+    </div>
+  </body></html>`;
+
+  const w = window.open("","_blank");
+  if(!w) return alert("Permitir ventanas emergentes para imprimir");
+  w.document.write(html); w.document.close();
+  setTimeout(()=>w.print(),500);
+}
+
+function ModuloCobros({isAdmin}) {
+  const [pedidos]   = useSaved("parrillas-pedidos",       []);
+  const [clientes]  = useSaved("parrillas-lista-precios", []);
+  const [cobros, setCobros] = useSaved("parrillas-cobros", []);
+  const [saved, setSaved]   = useState(false);
+
+  // Formulario de generación de boleta
+  const hoy = new Date().toISOString().slice(0,10);
+  const [clienteSel, setClienteSel] = useState("");
+  const [desde,      setDesde]      = useState(hoy);
+  const [hasta,      setHasta]      = useState(hoy);
+  const [preview,    setPreview]    = useState(null); // boleta preview
+
+  const doSave = next => { setCobros(next); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+
+  // Clientes externos únicos desde pedidos
+  const clientesConPedidos = [...new Set(
+    pedidos.filter(p=>p.tipo==="cliente").map(p=>p.nombreMostrar||p.destino)
+  )].sort();
+
+  // Generar boleta preview
+  const generarPreview = () => {
+    if(!clienteSel) return;
+    // Pedidos del cliente en el período
+    const pedsPeriodo = pedidos.filter(p=>
+      p.tipo==="cliente" &&
+      (p.nombreMostrar||p.destino)===clienteSel &&
+      p.fecha>=desde && p.fecha<=hasta
+    );
+    if(!pedsPeriodo.length) { alert(`Sin pedidos para ${clienteSel} en ese período.`); return; }
+
+    // Agrupar ítems
+    const itemsMap = {};
+    pedsPeriodo.forEach(ped=>ped.items.forEach(it=>{
+      if(!itemsMap[it.producto]) itemsMap[it.producto]={producto:it.producto,unidad:it.unidad||"u",cantidad:0};
+      itemsMap[it.producto].cantidad += it.cantidad;
+    }));
+
+    // Buscar precios del cliente
+    const listaCliente = clientes.find(c=>c.nombre===clienteSel);
+    const precios = listaCliente?.precios||[];
+
+    const items = Object.values(itemsMap).map(it=>{
+      const precioObj = precios.find(p=>p.producto===it.producto);
+      const precioUnitario = precioObj?.precio||0;
+      const subtotal = precioUnitario * it.cantidad;
+      return {...it, precioUnitario, subtotal, sinPrecio:!precioObj};
+    });
+
+    const total = items.reduce((a,it)=>a+it.subtotal,0);
+    setPreview({clienteNombre:clienteSel, desde, hasta, items, total,
+      pedidos:pedsPeriodo.length, estado:"pendiente"});
+  };
+
+  // Registrar cobro
+  const registrarCobro = (estado) => {
+    if(!preview) return;
+    const nuevo = {id:Date.now(), ...preview, estado, registradoEl:new Date().toLocaleString("es-AR")};
+    doSave([nuevo,...cobros]);
+    setPreview(null);
+  };
+
+  // Stats
+  const totalCobrado  = cobros.filter(c=>c.estado==="cobrado").reduce((a,c)=>a+c.total,0);
+  const totalPendiente= cobros.filter(c=>c.estado==="pendiente").reduce((a,c)=>a+c.total,0);
+  const dm = {fontFamily:"'DM Mono',monospace"};
+
+  const [filtroCli, setFiltroCli] = useState("");
+  const cobrosFiltrados = filtroCli
+    ? cobros.filter(c=>c.clienteNombre.toLowerCase().includes(filtroCli.toLowerCase()))
+    : cobros;
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+
+      {/* KPIs */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
+        <KPI label="Boletas emitidas" value={cobros.length.toString()} sub="Histórico total"/>
+        <KPI label="Total cobrado" value={totalCobrado>0?fmt(totalCobrado):"—"} sub="Confirmados" color={C.green}/>
+        <KPI label="Pendiente de cobro" value={totalPendiente>0?fmt(totalPendiente):"—"} sub="Sin confirmar" color={C.orange}/>
+        <KPI label="Clientes externos" value={clientesConPedidos.length.toString()} sub="Con pedidos registrados" color={C.blue}/>
+      </div>
+
+      {/* ── GENERADOR DE BOLETA ── */}
+      {isAdmin&&(
+        <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden",
+          boxShadow:C.shadow}}>
+          <div style={{padding:"14px 20px",borderBottom:`1px solid ${C.border}`,
+            background:"linear-gradient(135deg,#fffbeb,#fff7ed)"}}>
+            <div style={{fontWeight:700,fontSize:15,color:"#92400e",marginBottom:2}}>💵 Generar boleta de cobro</div>
+            <div style={{fontSize:11,color:"#b45309"}}>
+              Seleccioná el cliente y el período — se calculará automáticamente en base a los pedidos y la lista de precios.
+            </div>
+          </div>
+
+          <div style={{padding:"20px",display:"flex",flexDirection:"column",gap:16}}>
+            {/* Controles */}
+            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr auto",gap:12,alignItems:"flex-end"}}>
+              <div>
+                <div style={{fontSize:9,color:C.textSub,...dm,textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Cliente externo</div>
+                <select style={{...inp,width:"100%"}} value={clienteSel}
+                  onChange={e=>{ setClienteSel(e.target.value); setPreview(null); }}>
+                  <option value="">— elegí un cliente —</option>
+                  {clientesConPedidos.map(c=>(
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                {clientesConPedidos.length===0&&(
+                  <div style={{fontSize:10,color:C.orange,marginTop:4,...dm}}>
+                    ⚠ No hay clientes externos. Cargá pedidos de tipo "Cliente externo" en el módulo Pedidos.
+                  </div>
+                )}
+              </div>
+              <div>
+                <div style={{fontSize:9,color:C.textSub,...dm,textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Desde</div>
+                <input type="date" style={{...inp,width:"100%"}} value={desde}
+                  onChange={e=>{ setDesde(e.target.value); setPreview(null); }}/>
+              </div>
+              <div>
+                <div style={{fontSize:9,color:C.textSub,...dm,textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Hasta</div>
+                <input type="date" style={{...inp,width:"100%"}} value={hasta}
+                  onChange={e=>{ setHasta(e.target.value); setPreview(null); }}/>
+              </div>
+              <button onClick={generarPreview}
+                style={{background:C.accent,color:"#fff",border:"none",borderRadius:9,
+                  padding:"10px 20px",fontFamily:"'Inter',sans-serif",fontWeight:700,fontSize:13,
+                  cursor:"pointer",whiteSpace:"nowrap",
+                  boxShadow:`0 2px 8px ${C.accent}40`}}>
+                Calcular boleta →
+              </button>
+            </div>
+
+            {/* Preview boleta */}
+            {preview&&(
+              <div style={{border:`2px solid #fde68a`,borderRadius:10,overflow:"hidden",
+                background:"#fffbeb"}}>
+                {/* Header preview */}
+                <div style={{padding:"14px 20px",borderBottom:"1px solid #fde68a",
+                  display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <div style={{fontWeight:800,fontSize:16,color:"#92400e"}}>{preview.clienteNombre}</div>
+                    <div style={{fontSize:11,color:"#b45309",marginTop:2,...dm}}>
+                      {preview.desde===preview.hasta?preview.desde:`${preview.desde} al ${preview.hasta}`}
+                      {" · "}{preview.pedidos} pedido{preview.pedidos!==1?"s":""}
+                    </div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:10,color:"#b45309",marginBottom:3,...dm}}>TOTAL A COBRAR</div>
+                    <div style={{fontWeight:900,fontSize:28,...dm,color:"#d97706"}}>
+                      {fmt(preview.total)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Items table */}
+                <div style={{overflowX:"auto"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse"}}>
+                    <thead>
+                      <tr style={{background:"#fef3c7"}}>
+                        <Th>Producto</Th>
+                        <Th>Unidad</Th>
+                        <Th style={{textAlign:"center"}}>Cantidad</Th>
+                        <Th style={{textAlign:"right"}}>Precio unit.</Th>
+                        <Th style={{textAlign:"right"}}>Subtotal</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.items.map((it,i)=>(
+                        <tr key={i}
+                          onMouseEnter={e=>e.currentTarget.style.background="#fef9ee"}
+                          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                          <Td>
+                            <strong style={{fontSize:13}}>{it.producto}</strong>
+                            {it.sinPrecio&&(
+                              <span style={{marginLeft:8,background:"#fef3c7",color:"#92400e",
+                                border:"1px solid #fde68a",borderRadius:10,
+                                padding:"1px 7px",fontSize:9,fontWeight:700}}>
+                                Sin precio
+                              </span>
+                            )}
+                          </Td>
+                          <Td style={{...dm,fontSize:11,color:C.textSub}}>{it.unidad}</Td>
+                          <Td style={{textAlign:"center",...dm,fontWeight:700,fontSize:15,color:C.text}}>
+                            {it.cantidad}
+                          </Td>
+                          <Td style={{textAlign:"right",...dm,fontSize:12,color:C.textSub}}>
+                            {it.precioUnitario>0?fmt(it.precioUnitario):<span style={{color:C.orange}}>—</span>}
+                          </Td>
+                          <Td style={{textAlign:"right",...dm,fontWeight:700,fontSize:15,
+                            color:it.sinPrecio?C.muted:C.accent}}>
+                            {it.sinPrecio?"—":fmt(it.subtotal)}
+                          </Td>
+                        </tr>
+                      ))}
+                      {/* Totales */}
+                      <tr style={{background:"#fef3c7",borderTop:"2px solid #fde68a"}}>
+                        <Td colSpan={2} style={{fontWeight:800,color:"#92400e",fontSize:14}}>TOTAL</Td>
+                        <Td style={{textAlign:"center",...dm,fontWeight:700,color:"#92400e"}}>
+                          {preview.items.reduce((a,i)=>a+i.cantidad,0)} u.
+                        </Td>
+                        <Td/>
+                        <Td style={{textAlign:"right",...dm,fontWeight:900,fontSize:18,color:"#d97706"}}>
+                          {fmt(preview.total)}
+                        </Td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Advertencia sin precio */}
+                {preview.items.some(it=>it.sinPrecio)&&(
+                  <div style={{margin:"10px 20px",padding:"9px 14px",background:"#fff7ed",
+                    border:"1px solid #fed7aa",borderRadius:8,fontSize:11,color:"#9a3412"}}>
+                    ⚠️ <strong>{preview.items.filter(it=>it.sinPrecio).length} producto{preview.items.filter(it=>it.sinPrecio).length!==1?"s":""}</strong> sin precio en la lista de {preview.clienteNombre}.
+                    Cargalos en <strong>Listas precio</strong> para incluirlos en el total.
+                  </div>
+                )}
+
+                {/* Acciones */}
+                <div style={{padding:"14px 20px",borderTop:"1px solid #fde68a",
+                  display:"flex",gap:10,justifyContent:"flex-end",alignItems:"center"}}>
+                  <span style={{fontSize:11,color:"#b45309",...dm,marginRight:8}}>
+                    ¿Qué querés hacer con esta boleta?
+                  </span>
+                  <button onClick={()=>generarPDFBoleta(preview)}
+                    style={{background:"#fff",color:"#d97706",border:"2px solid #fde68a",
+                      borderRadius:8,padding:"9px 18px",fontFamily:"'Inter',sans-serif",
+                      fontWeight:600,fontSize:12,cursor:"pointer",
+                      display:"flex",alignItems:"center",gap:6}}>
+                    📄 Ver PDF
+                  </button>
+                  <button onClick={()=>registrarCobro("pendiente")}
+                    style={{background:"#fff7ed",color:"#ea580c",border:"1px solid #fed7aa",
+                      borderRadius:8,padding:"9px 18px",fontFamily:"'Inter',sans-serif",
+                      fontWeight:600,fontSize:12,cursor:"pointer"}}>
+                    💾 Guardar como pendiente
+                  </button>
+                  <button onClick={()=>registrarCobro("cobrado")}
+                    style={{background:C.green,color:"#fff",border:"none",
+                      borderRadius:8,padding:"9px 18px",fontFamily:"'Inter',sans-serif",
+                      fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                    ✓ Guardar como cobrado
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── HISTORIAL DE COBROS ── */}
+      <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden",boxShadow:C.shadow}}>
+        <div style={{padding:"13px 20px",borderBottom:`1px solid ${C.border}`,
+          display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontWeight:700,fontSize:14,color:C.text}}>Historial de cobros</span>
+            <Saved show={saved}/>
+          </div>
+          <input value={filtroCli} onChange={e=>setFiltroCli(e.target.value)}
+            placeholder="🔍 Buscar cliente…"
+            style={{...inp,width:180,padding:"5px 10px",fontSize:12}}/>
+        </div>
+
+        {cobros.length===0
+          ? <div style={{padding:"48px",textAlign:"center",color:C.muted,...dm,fontSize:11}}>
+              <div style={{fontSize:32,marginBottom:12}}>💵</div>
+              <div>Sin boletas registradas aún.</div>
+              {isAdmin&&<div style={{marginTop:6,color:C.textSub}}>Generá la primera boleta con el formulario de arriba.</div>}
+            </div>
+          : <div style={{maxHeight:520,overflowY:"auto"}}>
+              {cobrosFiltrados.map(cobro=>{
+                const esHoy = cobro.registradoEl?.startsWith(new Date().toLocaleDateString("es-AR"));
+                return (
+                  <div key={cobro.id}
+                    style={{borderBottom:`1px solid ${C.border}`,padding:"14px 20px",
+                      transition:"background .12s"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                      <div>
+                        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+                          <strong style={{fontSize:15,color:C.text}}>{cobro.clienteNombre}</strong>
+                          <Badge color={cobro.estado==="cobrado"?C.green:C.orange}>
+                            {cobro.estado==="cobrado"?"✓ Cobrado":"⏳ Pendiente"}
+                          </Badge>
+                          {esHoy&&<Badge color={C.blue}>Hoy</Badge>}
+                        </div>
+                        <div style={{fontSize:11,color:C.textSub,...dm}}>
+                          Período: {cobro.desde===cobro.hasta?cobro.desde:`${cobro.desde} al ${cobro.hasta}`}
+                          {" · "}{cobro.pedidos} pedido{cobro.pedidos!==1?"s":""}
+                          {" · "}{cobro.registradoEl}
+                        </div>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <div style={{textAlign:"right"}}>
+                          <div style={{fontWeight:900,fontSize:20,...dm,
+                            color:cobro.estado==="cobrado"?C.green:C.orange}}>
+                            {fmt(cobro.total)}
+                          </div>
+                          <div style={{fontSize:10,color:C.muted,...dm}}>
+                            {cobro.items.reduce((a,i)=>a+i.cantidad,0)} unidades · {cobro.items.length} productos
+                          </div>
+                        </div>
+                        <div style={{display:"flex",gap:6,flexDirection:"column"}}>
+                          <button onClick={()=>generarPDFBoleta(cobro)}
+                            style={{background:"#fef3c7",color:"#92400e",border:"1px solid #fde68a",
+                              borderRadius:7,padding:"5px 12px",fontSize:11,cursor:"pointer",
+                              fontFamily:"'Inter',sans-serif",fontWeight:600}}>
+                            📄 PDF
+                          </button>
+                          {isAdmin&&cobro.estado==="pendiente"&&(
+                            <button onClick={()=>doSave(cobros.map(c=>c.id===cobro.id?{...c,estado:"cobrado"}:c))}
+                              style={{background:"#dcfce7",color:"#15803d",border:"1px solid #86efac",
+                                borderRadius:7,padding:"5px 12px",fontSize:11,cursor:"pointer",
+                                fontFamily:"'Inter',sans-serif",fontWeight:600}}>
+                              ✓ Marcar cobrado
+                            </button>
+                          )}
+                          {isAdmin&&<button onClick={()=>doSave(cobros.filter(x=>x.id!==cobro.id))}
+                            style={{background:"transparent",border:"none",color:C.red,
+                              cursor:"pointer",fontSize:12,opacity:.4,textAlign:"center"}}>× eliminar</button>}
+                        </div>
+                      </div>
+                    </div>
+                    {/* Items resumidos */}
+                    <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                      {cobro.items.map((it,i)=>(
+                        <span key={i} style={{background:"#f1f5f9",border:"1px solid #e2e8f0",
+                          borderRadius:5,padding:"2px 9px",fontSize:11,...dm}}>
+                          {it.producto}
+                          <span style={{fontWeight:700,color:C.accent,marginLeft:4}}>{it.cantidad}</span>
+                          {it.sinPrecio&&<span style={{color:C.orange,marginLeft:3}}>⚠</span>}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>}
+      </div>
+
+      {/* Resumen por cliente */}
+      {cobros.length>0&&(
+        <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:12,padding:"16px 20px",boxShadow:C.shadow}}>
+          <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:12}}>Resumen por cliente</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
+            {clientesConPedidos.map((nombre,i)=>{
+              const cobrosCliente = cobros.filter(c=>c.clienteNombre===nombre);
+              if(!cobrosCliente.length) return null;
+              const totalC = cobrosCliente.filter(c=>c.estado==="cobrado").reduce((a,c)=>a+c.total,0);
+              const totalP = cobrosCliente.filter(c=>c.estado==="pendiente").reduce((a,c)=>a+c.total,0);
+              return (
+                <div key={nombre} style={{background:"#f8fafc",border:`1px solid ${C.border}`,
+                  borderRadius:10,padding:"12px 16px",minWidth:200,
+                  borderLeft:`3px solid ${COLORS[i%COLORS.length]}`}}>
+                  <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:6}}>{nombre}</div>
+                  <div style={{display:"flex",gap:16}}>
+                    {totalC>0&&<div>
+                      <div style={{fontSize:9,...dm,textTransform:"uppercase",letterSpacing:1,color:C.green,marginBottom:2}}>Cobrado</div>
+                      <div style={{fontWeight:700,...dm,color:C.green}}>{fmt(totalC)}</div>
+                    </div>}
+                    {totalP>0&&<div>
+                      <div style={{fontSize:9,...dm,textTransform:"uppercase",letterSpacing:1,color:C.orange,marginBottom:2}}>Pendiente</div>
+                      <div style={{fontWeight:700,...dm,color:C.orange}}>{fmt(totalP)}</div>
+                    </div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── ROLES ─────────────────────────────────────────────────────
 // admin    → ve y edita todo
 // operador → ve y edita todo EXCEPTO Sueldos y Costos (ocultos)
 // lector   → solo lectura, solo Stock y Pedidos
 
 const MODS_ALL = [
-  {id:"sueldos",     label:"Sueldos",     icon:"👥", desc:"15 empleados",       roles:["admin"]},
-  {id:"stock",       label:"Stock",       icon:"📦", desc:"M. Acosta · Cruz",   roles:["admin","operador","lector"]},
-  {id:"pedidos",     label:"Pedidos",     icon:"🛒", desc:"Despacho · clientes",roles:["admin","operador","lector"]},
-  {id:"costos",      label:"Costos",      icon:"💰", desc:"Márgenes · precios", roles:["admin"]},
-  {id:"proveedores", label:"Proveedores", icon:"🤝", desc:"Cuentas corrientes",  roles:["admin","operador"]},
-  {id:"ventas",      label:"Ventas",      icon:"📊", desc:"6 locales · costanera",roles:["admin","operador"]},
+  {id:"sueldos",     label:"Sueldos",      icon:"👥", desc:"15 empleados",        roles:["admin"]},
+  {id:"stock",       label:"Stock",        icon:"📦", desc:"M. Acosta · Cruz",    roles:["admin","operador","lector"]},
+  {id:"pedidos",     label:"Pedidos",      icon:"🛒", desc:"Despacho · clientes", roles:["admin","operador","lector"]},
+  {id:"precios",     label:"Listas precio",icon:"🏷️", desc:"Precios por cliente",  roles:["admin","operador"]},
+  {id:"cobros",      label:"Cobros",       icon:"💵", desc:"Boletas · clientes",   roles:["admin","operador"]},
+  {id:"costos",      label:"Costos",       icon:"💰", desc:"Márgenes · costos",   roles:["admin"]},
+  {id:"proveedores", label:"Proveedores",  icon:"🤝", desc:"Cuentas corrientes",   roles:["admin","operador"]},
+  {id:"ventas",      label:"Ventas",       icon:"📊", desc:"6 locales · costanera",roles:["admin","operador"]},
 ];
 
 const ROLE_META = {
@@ -3350,6 +4353,8 @@ export default function App() {
           {actual?.id==="stock"       && <ModuloStock        isAdmin={canEdit}/>}
           {actual?.id==="pedidos"     && <ModuloPedidos      isAdmin={canEdit}/>}
           {actual?.id==="costos"      && <ModuloCostos       isAdmin={isAdmin}/>}
+          {actual?.id==="precios"     && <ModuloPrecios      isAdmin={canEdit}/>}
+          {actual?.id==="cobros"      && <ModuloCobros       isAdmin={canEdit}/>}
           {actual?.id==="proveedores" && <ModuloProveedores  isAdmin={canEdit}/>}
           {actual?.id==="ventas"      && <ModuloVentas       isAdmin={canEdit}/>}
         </div>
