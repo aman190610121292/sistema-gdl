@@ -3186,22 +3186,35 @@ function ModuloPrecios({isAdmin}) {
   const [showNuevoCli, setShowNuevoCli] = useState(false);
   const [formCli, setFormCli]     = useState({nombre:"", notas:""});
   const [prodSearch, setProdSearch] = useState("");
+  const [filtroDep,  setFiltroDep]  = useState("todos");
+  const [filtroCat,  setFiltroCat]  = useState("todas");
   // Celda en edición: {productoId, clienteId}
   const [editCell, setEditCell]   = useState(null);
   const [editVal,  setEditVal]    = useState("");
 
   const doSave = next => { setClientes(next); setSaved(true); setTimeout(()=>setSaved(false),2000); };
 
-  // Lista unificada de productos (stock + propios, sin duplicados)
+  // Lista unificada con depósito y categoría
   const todosProductos = [
-    ...stock.map(s=>({id:"s"+s.id, nombre:s.producto, unidad:s.unidad||"u"})),
-    ...productos.filter(p=>!p.costo_muerto).map(p=>({id:"p"+p.id, nombre:p.producto, unidad:"u"})),
+    ...stock.map(s=>({id:"s"+s.id, nombre:s.producto, unidad:s.unidad||"u",
+      deposito:s.deposito, categoria:s.categoria||"Sin categoría"})),
+    ...productos.filter(p=>!p.costo_muerto).map(p=>({id:"p"+p.id, nombre:p.producto, unidad:"u",
+      deposito:null, categoria:"Productos propios"})),
   ].filter((p,i,arr)=>arr.findIndex(x=>x.nombre===p.nombre)===i)
    .sort((a,b)=>a.nombre.localeCompare(b.nombre));
 
-  const prodFiltrados = prodSearch.trim()===""
+  // Categorías disponibles según depósito activo
+  const depBase = filtroDep==="todos"
     ? todosProductos
-    : todosProductos.filter(p=>p.nombre.toLowerCase().includes(prodSearch.toLowerCase()));
+    : todosProductos.filter(p=>filtroDep==="sin"?!p.deposito:p.deposito===+filtroDep);
+  const catsDisponibles = ["todas",...new Set(depBase.map(p=>p.categoria).filter(Boolean))];
+
+  const prodFiltrados = todosProductos.filter(p=>{
+    const matchDep = filtroDep==="todos"||(filtroDep==="sin"?!p.deposito:p.deposito===+filtroDep);
+    const matchCat = filtroCat==="todas"||p.categoria===filtroCat;
+    const matchQ   = prodSearch.trim()===""||p.nombre.toLowerCase().includes(prodSearch.toLowerCase());
+    return matchDep&&matchCat&&matchQ;
+  });
 
   // Obtener precio de un producto para un cliente
   const getPrecio = (clienteId, prodId) => {
@@ -3261,26 +3274,71 @@ function ModuloPrecios({isAdmin}) {
         <KPI label="Precios faltantes" value={Math.max(0,clientes.length*prodFiltrados.length-totalPrecios).toString()} sub="Celdas vacías" color={C.orange}/>
       </div>
 
-      {/* Barra de acciones */}
-      <div style={{display:"flex",gap:8,alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <input value={prodSearch} onChange={e=>setProdSearch(e.target.value)}
-            placeholder="🔍 Filtrar productos…"
-            style={{...inp,width:220,padding:"6px 11px",fontSize:12}}/>
-          {prodSearch&&<button onClick={()=>setProdSearch("")}
-            style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:18}}>×</button>}
-          <span style={{color:C.muted,fontSize:11,...dm}}>
-            {prodFiltrados.length} de {todosProductos.length} productos
-          </span>
+      {/* Barra de filtros */}
+      <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,
+        padding:"12px 16px",display:"flex",flexDirection:"column",gap:10,boxShadow:C.shadow}}>
+
+        {/* Fila 1: búsqueda + agregar cliente */}
+        <div style={{display:"flex",gap:8,alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{display:"flex",gap:8,alignItems:"center",flex:1}}>
+            <input value={prodSearch} onChange={e=>setProdSearch(e.target.value)}
+              placeholder="🔍 Buscar producto…"
+              style={{...inp,width:220,padding:"6px 11px",fontSize:12}}/>
+            {prodSearch&&<button onClick={()=>setProdSearch("")}
+              style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:18,lineHeight:1}}>×</button>}
+            <span style={{color:C.muted,fontSize:11,fontFamily:"'DM Mono',monospace"}}>
+              {prodFiltrados.length} de {todosProductos.length} productos
+            </span>
+          </div>
+          {isAdmin&&(
+            <button onClick={()=>setShowNuevoCli(!showNuevoCli)}
+              style={{background:C.accent,color:"#fff",border:"none",borderRadius:8,
+                padding:"7px 16px",fontFamily:"'Inter',sans-serif",fontWeight:600,
+                fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+              + Agregar cliente
+            </button>
+          )}
         </div>
-        {isAdmin&&(
-          <button onClick={()=>setShowNuevoCli(!showNuevoCli)}
-            style={{background:C.accent,color:"#fff",border:"none",borderRadius:8,
-              padding:"7px 16px",fontFamily:"'Inter',sans-serif",fontWeight:600,
-              fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
-            + Agregar cliente
-          </button>
-        )}
+
+        {/* Fila 2: filtros de depósito */}
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+          <span style={{fontSize:10,color:C.textSub,fontFamily:"'DM Mono',monospace",
+            textTransform:"uppercase",letterSpacing:1,marginRight:4}}>Depósito:</span>
+          {[
+            {val:"todos", label:"Todos"},
+            {val:"1",     label:"🏭 Mariano Acosta"},
+            {val:"2",     label:"🏭 Cruz"},
+          ].map(d=>(
+            <button key={d.val} onClick={()=>{setFiltroDep(d.val);setFiltroCat("todas");}}
+              style={{padding:"4px 12px",borderRadius:20,border:`1px solid ${filtroDep===d.val?C.blue:C.border}`,
+                background:filtroDep===d.val?"#dbeafe":"transparent",
+                color:filtroDep===d.val?C.blue:C.textSub,
+                fontFamily:"'Inter',sans-serif",fontWeight:filtroDep===d.val?600:400,
+                fontSize:11,cursor:"pointer",transition:"all .12s"}}>
+              {d.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Fila 3: filtros de categoría */}
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+          <span style={{fontSize:10,color:C.textSub,fontFamily:"'DM Mono',monospace",
+            textTransform:"uppercase",letterSpacing:1,marginRight:4}}>Categoría:</span>
+          {catsDisponibles.map(cat=>{
+            const color = cat==="todas"?C.accent:(CAT_COL[cat]||C.purple);
+            return (
+              <button key={cat} onClick={()=>setFiltroCat(cat)}
+                style={{padding:"4px 12px",borderRadius:20,
+                  border:`1px solid ${filtroCat===cat?color:C.border}`,
+                  background:filtroCat===cat?color+"18":"transparent",
+                  color:filtroCat===cat?color:C.textSub,
+                  fontFamily:"'Inter',sans-serif",fontWeight:filtroCat===cat?600:400,
+                  fontSize:11,cursor:"pointer",transition:"all .12s"}}>
+                {cat==="todas"?"Todas las categorías":cat}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Formulario nuevo cliente */}
@@ -3408,7 +3466,26 @@ function ModuloPrecios({isAdmin}) {
                           <div style={{display:"flex",alignItems:"center",gap:8}}>
                             <div>
                               <div style={{fontWeight:600,fontSize:12,color:C.text}}>{prod.nombre}</div>
-                              <div style={{fontSize:9,...dm,color:C.muted,marginTop:1}}>{prod.unidad}</div>
+                              <div style={{display:"flex",gap:5,marginTop:2,alignItems:"center"}}>
+                                <span style={{fontSize:9,fontFamily:"'DM Mono',monospace",color:C.muted}}>{prod.unidad}</span>
+                                {prod.categoria&&prod.categoria!=="Sin categoría"&&(
+                                  <span style={{background:(CAT_COL[prod.categoria]||C.purple)+"18",
+                                    color:CAT_COL[prod.categoria]||C.purple,
+                                    border:`1px solid ${(CAT_COL[prod.categoria]||C.purple)}33`,
+                                    padding:"1px 6px",borderRadius:10,fontSize:8,
+                                    fontFamily:"'DM Mono',monospace",fontWeight:600}}>
+                                    {prod.categoria}
+                                  </span>
+                                )}
+                                {prod.deposito&&(
+                                  <span style={{background:prod.deposito===1?"#dbeafe":"#dcfce7",
+                                    color:prod.deposito===1?C.blue:C.green,
+                                    padding:"1px 6px",borderRadius:10,fontSize:8,
+                                    fontFamily:"'DM Mono',monospace",fontWeight:600}}>
+                                    {prod.deposito===1?"M.Acosta":"Cruz"}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </td>
